@@ -7,7 +7,7 @@ import {
 	SUBROOM_SCHEMA_DDL,
 	UNITY_ASSET_SCHEMA_DDL,
 } from '@repo/domain'
-
+import { SCHEMA_DDL } from '../../../../api/src/custom-avatar-items-db'
 import cloudBuilds, { CLOUD_JOB_SCHEMA } from '../../cloud-builds'
 
 import type { Env } from '../../context'
@@ -52,6 +52,7 @@ beforeAll(async () => {
 	await adminSecretsStore(env.CLOUD_BUILD_KEY).create(key)
 	env.CLOUD_BUILD_TARGETS = '0'
 	for (const sql of [
+		...SCHEMA_DDL,
 		...ROOM_SCHEMA_DDL,
 		...SUBROOM_SCHEMA_DDL,
 		...STUDIO_CLOUD_BUILD_SCHEMA_DDL,
