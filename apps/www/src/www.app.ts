@@ -67,6 +67,7 @@ import {
 	requireStaff,
 	runDiscordRoleGiftHandler,
 	sandboxStatusHandler,
+	searchGiftCatalogHandler,
 	searchReportsHandler,
 	setSandboxHandler,
 	syncDiscordRolesHandler,
@@ -806,6 +807,8 @@ const app = new Hono<App>()
 	.get('/api/staff/bans', bansInForceHandler)
 	.get('/api/staff/players/:id', playerHistoryHandler)
 	.get('/api/staff/players/:id/linked', linkedAccountsHandler)
+	// Genuine catalog search, developer-only like the gift it supplies.
+	.get('/api/staff/catalog/search', requireDeveloper, searchGiftCatalogHandler)
 	// The staff card on a player's profile page — account fixes the game has no endpoint for.
 	// The gifts create value from nothing, so they are developer-only, not all staff.
 	.post('/api/staff/players/:id/gift-tokens', requireDeveloper, giftTokensHandler)
