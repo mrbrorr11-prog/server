@@ -1,6 +1,8 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "auth",
+	// Keep the free Worker URL reachable when deploying without a Cloudflare DNS zone.
+	"workers_dev": true,
 	"main": "src/auth.app.ts",
 	"compatibility_date": "2026-06-16",
 	"compatibility_flags": ["nodejs_compat"],
