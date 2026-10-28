@@ -55,11 +55,14 @@ import {
 	CatalogKind,
 	getCatalogItem,
 	getCatalogItemById,
+	searchCatalog,
+	toCatalogAvatarItem,
 	toCatalogSkin,
 } from '../../econ/src/catalog-db'
 import { countConsumable, grantConsumable } from '../../econ/src/consumables-db'
 import { grantDiscordRoleGifts } from '../../econ/src/discord-role-gift'
 import { getEquipment, grantEquipment } from '../../econ/src/equipment-db'
+import { getInventory, grantItem } from '../../econ/src/inventory-db'
 import { grantCustomAvatarItem, ownedCustomAvatarItemIds } from '../../econ/src/inventory-custom-db'
 // The notification ids and the kick frame's recovered shape, owned by `notify`. Both are
 // imported as values/types with no runtime dependencies.
@@ -1346,6 +1349,23 @@ async function findGiftableItem(db: D1Database, requested: string): Promise<Gift
 	}
 }
 
+/** Search genuine catalog rows by display name; staff access and developer role are checked by the router. */
+export async function searchGiftCatalogHandler(c: Context<App>) {
+	const query = (c.req.query('q') ?? '').trim()
+	if (query.length < 2) return c.json({ items: [] })
+	if (query.length > 80) return c.json({ error: 'Keep the search under 80 characters' }, 400)
+	const kinds = [CatalogKind.AvatarItem, CatalogKind.Skin, CatalogKind.Consumable, CatalogKind.CustomAvatarItem]
+	const groups = await Promise.all(kinds.map((kind) => searchCatalog(c.env.DB, kind, query, 20)))
+	const items = groups.flat()
+		.map((row) => ({ id: row.item_key, name: row.friendly_name, kind: row.kind }))
+		.sort((a, b) => {
+			const x = query.toLowerCase()
+			return Number(!a.name.toLowerCase().startsWith(x)) - Number(!b.name.toLowerCase().startsWith(x))
+				|| a.name.localeCompare(b.name)
+		}).slice(0, 30)
+	return c.json({ items })
+}
+
 /**
  * Give a player an item — a custom avatar item, an equipment skin or a consumable — by any
  * one of their ids, delivered the way a store purchase delivers it: ownership in the inventory
@@ -1380,13 +1400,7 @@ export async function giftItemHandler(c: Context<App>) {
 		case 'consumable':
 			return await giftConsumable(c, playerId, found.row, message)
 		case 'avatar_item':
-			return c.json(
-				{
-					error:
-						'That is a baked avatar item; only custom items, skins and consumables can be gifted',
-				},
-				400
-			)
+			return await giftAvatarItem(c, playerId, found.row, message)
 		case 'ambiguous':
 			return c.json({ error: 'That id names both a custom item and a catalog item' }, 409)
 	}
@@ -1444,6 +1458,41 @@ async function giftCustomItem(
 		customAvatarItemId: item.CustomAvatarItemId,
 		name: item.Name,
 		giftId: gift.id,
+	})
+}
+
+/** Built-in avatar clothing grants through the same owned inventory as a store purchase. */
+async function giftAvatarItem(c: Context<App>, playerId: number, row: CatalogRow, message: string) {
+	const item = toCatalogAvatarItem(row)
+	const owned = await getInventory(c.env.DB, playerId)
+	if (owned.some((entry) => entry.AvatarItemDesc === item.AvatarItemDesc)) {
+		return c.json({ error: 'This player already owns that clothing item' }, 409)
+	}
+	await grantItem(c.env.DB, playerId, {
+		AvatarItemType: item.AvatarItemType,
+		AvatarItemDesc: item.AvatarItemDesc,
+		PlatformMask: -1,
+		FriendlyName: item.FriendlyName,
+		Tooltip: item.Tooltip ?? '',
+		Rarity: item.Rarity,
+	})
+	const content = staffGiftContent({
+		GiftContext: GIFT_CONTEXT_PURCHASED_GIFT_A,
+		AvatarItemDesc: item.AvatarItemDesc,
+		AvatarItemType: item.AvatarItemType,
+		GiftRarity: item.Rarity,
+		Message: message,
+	})
+	const gift = await createGift(c.env.DB, playerId, content)
+	await recordPlayerAudit(c, 'gift_avatar_item', {
+		playerId, avatarItemDesc: item.AvatarItemDesc, name: item.FriendlyName, message, giftId: gift.id,
+	})
+	logger.info('staff gifted avatar clothing', {
+		moderatorId: staffId(c), playerId, avatarItemDesc: item.AvatarItemDesc,
+	})
+	await announceGift(c, playerId, gift.id, content)
+	return c.json({
+		kind: 'avatar_item', playerId, name: item.FriendlyName, avatarItemDesc: item.AvatarItemDesc, giftId: gift.id,
 	})
 }
 
