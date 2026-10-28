@@ -188,7 +188,21 @@ EXTRA_VARS=$(recflare_vars)
 MINIFY="--minify"
 [ -n "$IS_VITE" ] && MINIFY=""
 
-# Deploy with wrangler using the extracted values as binding variables
+# Publish on the free workers.dev subdomain without requesting a Cloudflare DNS zone.
+# Custom domains still use --domain as before. A *.workers.dev hostname is NOT a
+# custom domain in Cloudflare, and passing --domain for one fails with
+# "zones route zone not found". The Worker name (from wrangler.jsonc) already
+# selects the host: www -> www.<account>.workers.dev, auth -> auth.<account>.workers.dev.
+case "$DOMAIN" in
+	*.workers.dev)
+		echo "Publishing to Workers.dev (no custom-domain zone required)"
+		;;
+	*)
+		set -- --domain "$HOST" "$@"
+		;;
+esac
+
+# Deploy with wrangler using the extracted values as binding variables.
 echo "Deploying worker $NAME version $VERSION to $HOST"
 # $EXTRA_VARS is intentionally unquoted — it's a flag list to word-split, and no knob value
 # contains whitespace (see recflare_vars), so there's nothing to split on inside a value.
@@ -199,6 +213,5 @@ wrangler deploy \
 	--var DOMAIN:"$DOMAIN" \
 	--var SUBDOMAINS:"$SUBDOMAINS_JSON" \
 	$EXTRA_VARS \
-	--domain "$HOST" \
 	$MINIFY \
 	"$@"
