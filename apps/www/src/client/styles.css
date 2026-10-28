@@ -1673,6 +1673,44 @@ button[type='submit']:disabled {
 	max-width: 360px;
 }
 
+/* Developer item picker: tappable results on Quest Browser and desktop. */
+.staff-item-picker {
+	position: relative;
+	max-width: 500px;
+	margin: 6px 0 14px;
+}
+.staff-item-picker label { margin-bottom: 0; }
+.staff-item-picker input[type='search'] { width: 100%; }
+.staff-item-results {
+	max-height: 260px;
+	overflow-y: auto;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: var(--bg);
+	margin-top: 4px;
+}
+.staff-item-results button {
+	display: block;
+	width: 100%;
+	padding: 10px 12px;
+	border: 0;
+	border-bottom: 1px solid var(--line);
+	border-radius: 0;
+	background: transparent;
+	color: var(--text);
+	text-align: left;
+	cursor: pointer;
+}
+.staff-item-results button:hover,
+.staff-item-results button:focus-visible { background: var(--line); }
+.staff-item-results small {
+	display: block;
+	font-size: 0.72rem;
+	margin-top: 3px;
+	color: var(--muted);
+	overflow-wrap: anywhere;
+}
+
 .staff-actions {
 	flex-wrap: wrap;
 	margin-top: 8px;
