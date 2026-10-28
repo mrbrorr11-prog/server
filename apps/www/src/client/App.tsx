@@ -1701,6 +1701,12 @@ function GiftMessageField({ value, onChange }: { value: string; onChange: (v: st
 	)
 }
 
+interface GiftCatalogMatch {
+	id: string
+	name: string
+	kind: 'avatar_item' | 'skin' | 'consumable' | 'custom_avatar_item'
+}
+
 function StaffPlayerActions({ account, navigate }: { account: PublicAccount; navigate: Navigate }) {
 	const [tokens, setTokens] = useState('')
 	// One message for every box sent from this card; it stays put between sends.
@@ -1708,6 +1714,10 @@ function StaffPlayerActions({ account, navigate }: { account: PublicAccount; nav
 	const [confirmingClear, setConfirmingClear] = useState(false)
 	const [confirmingDorm, setConfirmingDorm] = useState(false)
 	const [itemId, setItemId] = useState('')
+	const [itemSearch, setItemSearch] = useState('')
+	const [itemMatches, setItemMatches] = useState<GiftCatalogMatch[]>([])
+	const [itemSearchError, setItemSearchError] = useState('')
+	const [itemPicked, setItemPicked] = useState(false)
 	const [xp, setXp] = useState('')
 	const gift = useAction()
 	const xpGift = useAction()
@@ -1717,6 +1727,35 @@ function StaffPlayerActions({ account, navigate }: { account: PublicAccount; nav
 	const clearDorm = useAction()
 	const grantPlus = useAction()
 	const base = `/api/staff/players/${account.accountId}`
+
+	useEffect(() => {
+		if (itemPicked || itemSearch.trim().length < 2) {
+			setItemMatches([])
+			setItemSearchError('')
+			return
+		}
+		let active = true
+		const timer = setTimeout(() => {
+			void call<{ items: GiftCatalogMatch[] }>(
+				`/api/staff/catalog/search?q=${encodeURIComponent(itemSearch.trim())}`,
+				{ authed: true }
+			).then((response) => {
+				if (active) {
+					setItemMatches(response.items)
+					setItemSearchError('')
+				}
+			}).catch((error: unknown) => {
+				if (active) {
+					setItemMatches([])
+					setItemSearchError(error instanceof Error ? error.message : String(error))
+				}
+			})
+		}, 250)
+		return () => {
+			active = false
+			clearTimeout(timer)
+		}
+	}, [itemSearch, itemPicked])
 
 	return (
 		<section className="card">
@@ -1819,7 +1858,7 @@ function StaffPlayerActions({ account, navigate }: { account: PublicAccount; nav
 							e.preventDefault()
 							void itemGift.run(async () => {
 								const res = await call<{
-									kind: 'custom_item' | 'skin' | 'consumable'
+									kind: 'custom_item' | 'avatar_item' | 'skin' | 'consumable'
 									name: string
 									prefabName?: string
 									owned?: number
@@ -1828,7 +1867,12 @@ function StaffPlayerActions({ account, navigate }: { account: PublicAccount; nav
 									json: { itemId: itemId.trim(), message: message.trim() },
 								})
 								setItemId('')
+								setItemSearch('')
+								setItemMatches([])
+								setItemPicked(false)
 								switch (res.kind) {
+									case 'avatar_item':
+										return `Sent the clothing “${res.name}” to @${account.username}.`
 									case 'skin':
 										return `Sent the skin “${res.name}” (${res.prefabName}) to @${account.username}.`
 									case 'consumable':
@@ -1839,13 +1883,50 @@ function StaffPlayerActions({ account, navigate }: { account: PublicAccount; nav
 							})
 						}}
 					>
+						<div className="staff-item-picker">
+							<label htmlFor="staff-item-name-search">Find clothing or items by name</label>
+							<input
+								id="staff-item-name-search"
+								type="search"
+								value={itemSearch}
+								placeholder="Search shirts, hats, skins, consumables…"
+								autoComplete="off"
+								onChange={(e) => {
+									setItemSearch(e.target.value)
+									setItemPicked(false)
+									setItemId('')
+									setItemMatches([])
+								}}
+							/>
+							{itemSearchError && <p className="error">{itemSearchError}</p>}
+							{!itemPicked && itemMatches.length > 0 && (
+								<div className="staff-item-results" aria-label="Matching items">
+									{itemMatches.map((item) => (
+										<button
+											type="button"
+											key={`${item.kind}:${item.id}`}
+											onClick={() => {
+												setItemId(item.id)
+												setItemSearch(item.name)
+												setItemPicked(true)
+												setItemMatches([])
+											}}
+										>
+											<strong>{item.name}</strong>
+											<small>{item.kind.replace(/_/g, ' ')} · {item.id}</small>
+										</button>
+									))}
+								</div>
+							)}
+							<span className="hint">Type at least two letters, then select an item. Its real ID fills in below.</span>
+						</div>
 						<label>
 							Gift item
 							<span className="staff-gift">
 								<input
 									type="text"
 									value={itemId}
-									placeholder="Custom item, skin or consumable id"
+									placeholder="Selected item's ID (or enter one manually)"
 									spellCheck={false}
 									required
 									onChange={(e) => setItemId(e.target.value)}
@@ -1855,7 +1936,7 @@ function StaffPlayerActions({ account, navigate }: { account: PublicAccount; nav
 								</button>
 							</span>
 							<span className="hint">
-								A custom avatar item’s guid, a skin’s modification guid, a consumable’s item desc,
+								Select a clothing or other item by name above, or enter its ID manually. A custom avatar item's guid, a skin's modification guid, a consumable's item desc,
 								or a store id — the kind is worked out from the id. Arrives as a gift box, as if
 								bought from the store; free to them, and a creator isn’t paid. Consumables stack:
 								send again for another.
