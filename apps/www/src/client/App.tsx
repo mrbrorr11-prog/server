@@ -2645,10 +2645,15 @@ function NavBar({
 }) {
 	return (
 		<header className="nav">
-			<Link to="/" navigate={navigate} className="brand">
-				RecFlare
+			<Link to="/" navigate={navigate} className="brand" aria-label="RecFlare home">
+				<span className="brand-wordmark">REC<span>FLARE</span></span>
 			</Link>
-			<nav className="nav-links">
+			<nav className="nav-explore" aria-label="Explore RecFlare">
+				<a href="/#featured-rooms">Rooms</a>
+				<a href="/#community-photos">Photos</a>
+				<a href="/#about-recflare">About</a>
+			</nav>
+			<nav className="nav-links" aria-label="Account and community">
 				<a href={DISCORD_INVITE} target="_blank" rel="noreferrer">
 					Discord
 				</a>
@@ -2772,6 +2777,7 @@ function HomePage({
 		<main>
 			<Stage slides={feed.slides} offerSignup={offerSignup} navigate={navigate} />
 			<div className="shell home">
+				<HomeDiscovery config={config} slides={feed.slides} navigate={navigate} />
 				<About slides={feed.slides} error={feed.error} />
 			</div>
 		</main>
@@ -2813,18 +2819,19 @@ function Stage({
 				{/* Deliberately doesn't name the game: this is a fan project, so the
 				    trademark stays out of the headline and appears lower down, in
 				    plain nominative use next to the disclaimer. */}
+				<span className="stage-eyebrow">THE RECFLARE COMMUNITY</span>
 				<h1 className="stage-title">
-					Play <em>today</em>!
+					Your worlds.<br/><em>Together again.</em>
 				</h1>
 				<p className="stage-lede">
-					The servers you remember, rebuilt and running — free, open source, and up right now.
+					Discover rooms, reconnect with friends and jump back into the game on our fan-run servers.
 				</p>
 				<div className="stage-actions">
 					<a className="cta" href={DOWNLOAD_URL} target="_blank" rel="noreferrer">
-						Download for PC
+						Play on PC
 					</a>
 					<a className="cta" href={QUEST_DOWNLOAD_URL} target="_blank" rel="noreferrer">
-						Download for Quest
+						Play on Quest
 					</a>
 					<a className="cta discord" href={DISCORD_INVITE} target="_blank" rel="noreferrer">
 						Join the Discord
@@ -2845,6 +2852,7 @@ function Stage({
 			</div>
 			<div className="stage-show">
 				<div className="stage-frame">
+					<span className="stage-photo-tag">RECFLARE HIGHLIGHTS</span>
 					{slide && (
 						<img
 							className="stage-photo"
@@ -2900,6 +2908,92 @@ function Chevron({ next }: { next?: boolean }) {
 	)
 }
 
+/**
+ * Real rooms from the server's public recommendations feed, and recent community
+ * snapshots from the existing photo feed. Keeps the homepage alive with real content
+ * instead of shipping fake stock thumbnails or copying the original game's artwork.
+ */
+function HomeDiscovery({
+	config,
+	slides,
+	navigate,
+}: {
+	config: SiteConfig | undefined
+	slides: Slide[] | null
+	navigate: Navigate
+}) {
+	const [rooms, setRooms] = useState<PublicRoom[] | null>(null)
+	const [roomError, setRoomError] = useState('')
+	useEffect(() => {
+		if (config === undefined) return
+		let active = true
+		void call<PublicRoom[]>(`${where().rooms}/rooms/recommendations?skip=0&take=8`)
+			.then((result) => {
+				if (active) {
+					setRooms(result)
+					setRoomError('')
+				}
+			})
+			.catch((err: unknown) => {
+				if (active) {
+					setRooms([])
+					setRoomError(err instanceof Error ? err.message : String(err))
+				}
+			})
+		return () => { active = false }
+	}, [config])
+
+	return (
+		<div className="home-discovery">
+			<section className="discover-section" id="featured-rooms">
+				<div className="discover-heading">
+					<div>
+						<span className="section-eyebrow">GO SOMEWHERE NEW</span>
+						<h2>Featured Rooms</h2>
+						<p>Explore spaces made for the community.</p>
+					</div>
+					<span className="section-deco" aria-hidden="true">✦</span>
+				</div>
+				{rooms === null ? <p className="discover-message">Loading rooms…</p> :
+					rooms.length > 0 ? (
+						<div className="featured-room-grid">
+							{rooms.map((room) => (
+								<Link key={room.RoomId} to={`/rooms/${room.RoomId}`} navigate={navigate} className="featured-room-card">
+									<img src={`${where().img}/${room.ImageName}?width=256`} alt="" loading="lazy" />
+									<div className="featured-room-meta">
+										<strong>^{room.Name}</strong>
+										<small>{room.Stats.VisitCount.toLocaleString()} visits</small>
+									</div>
+								</Link>
+							))}
+						</div>
+					) : (
+						<p className="discover-message">{roomError ? 'Rooms are unavailable right now.' : 'No public rooms to show yet.'}</p>
+					)}
+			</section>
+			<section className="discover-section photos-section" id="community-photos">
+				<div className="discover-heading">
+					<div>
+						<span className="section-eyebrow">SHARED MOMENTS</span>
+						<h2>Community Photos</h2>
+						<p>Memories captured by players in the game.</p>
+					</div>
+				</div>
+				{slides && slides.length > 0 ? (
+					<div className="community-photo-grid">
+						{slides.slice(0, 6).map((slide, index) => (
+							<figure className="community-photo" key={`${slide.url}-${index}`}>
+								<img src={slide.url} alt={`In-game photo by ${slide.username}`} loading="lazy" />
+								<figcaption>By @{slide.username}{slide.roomName ? ` · ${slide.roomName}` : ''}</figcaption>
+							</figure>
+						))}
+					</div>
+				) : <p className="discover-message">Community photos will appear here when available.</p>}
+			</section>
+		</div>
+	)
+}
+
 /** What RecFlare is, under the fold, for whoever wants it. */
 function About({ slides, error }: { slides: Slide[] | null; error: string }) {
 	// The feed answering is proof the server replied, so the indicator can't claim
@@ -2907,7 +3001,7 @@ function About({ slides, error }: { slides: Slide[] | null; error: string }) {
 	const state = slides !== null ? 'online' : error ? 'down' : 'checking'
 
 	return (
-		<section className="about">
+		<section className="about" id="about-recflare">
 			<div>
 				<h2 className="about-title">A cloud architected server for the 2023-2026 game clients</h2>
 				<p className="about-lede">
