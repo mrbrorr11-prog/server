@@ -2649,13 +2649,14 @@ function NavBar({
 				<span className="brand-wordmark">REC<span>FLARE</span></span>
 			</Link>
 			<nav className="nav-explore" aria-label="Explore RecFlare">
-				<a href="/#featured-rooms">Rooms</a>
+				<a href={DOWNLOAD_URL} target="_blank" rel="noreferrer">Download</a>
+				<a href="/#featured-rooms">Directory</a>
 				<a href="/#community-photos">Photos</a>
 				<a href="/#about-recflare">About</a>
 			</nav>
 			<nav className="nav-links" aria-label="Account and community">
-				<a href={DISCORD_INVITE} target="_blank" rel="noreferrer">
-					Discord
+				<a href={DISCORD_INVITE} target="_blank" rel="noreferrer" className="support-link" aria-label="Community support on Discord">
+					Support
 				</a>
 				{account === undefined ? null : account ? (
 					<>
