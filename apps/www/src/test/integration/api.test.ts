@@ -308,11 +308,31 @@ it('translates auth’s password-signup refusal into the same sentence', async (
 	expect(failure.status).toBe(400)
 })
 
+it('requires a valid chosen username before consuming a Turnstile token', async () => {
+	const missing = await SELF.fetch('https://example.com/api/signup', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ password: 'whatever', turnstileToken: 'dummy' }),
+	})
+	expect(missing.status).toBe(400)
+	expect(await missing.json()).toEqual({ error: 'You must enter a username.' })
+
+	const invalid = await SELF.fetch('https://example.com/api/signup', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ username: 'Bad_Name', password: 'whatever', turnstileToken: 'dummy' }),
+	})
+	expect(invalid.status).toBe(400)
+	expect(await invalid.json()).toEqual({
+		error: 'Your username can only contain letters and numbers.',
+	})
+})
+
 it('refuses a signup with no Turnstile token', async () => {
 	const res = await SELF.fetch('https://example.com/api/signup', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ password: 'whatever' }),
+		body: JSON.stringify({ username: 'ExamplePlayer', password: 'whatever' }),
 	})
 	// Rejected before any upstream call, so a bot can't reach create_account by omitting it.
 	expect(res.status).toBe(400)

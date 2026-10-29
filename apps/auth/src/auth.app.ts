@@ -14,6 +14,8 @@ import {
 	getPasswordHash,
 	getRoomById,
 	hashPassword,
+	MAX_USERNAME_LENGTH,
+	nameRejection,
 	isRolloutGameVersion,
 	isSupportedGameVersion,
 	rolloutGameBuilds,
@@ -25,6 +27,7 @@ import {
 	subRoomDataBlob,
 	supportedGameBuilds,
 	updateAccount,
+	UsernameTakenError,
 	verifyPassword,
 	writeAuditLog,
 } from '@repo/domain'
@@ -47,6 +50,7 @@ import {
 // The account-wide ban lives on a `report` row, whose table the api worker owns; its db
 // module is plain D1 queries with no runtime deps, so it imports cleanly here.
 import { banEvasionMatch, resolveBan } from '../../api/src/bans-db'
+import { nameContainsSwears } from '../../api/src/sanitize'
 import { buildEndpoints } from '../../ns/src/endpoints'
 import { verifyMetaNonce } from './meta-nonce'
 import {
@@ -1350,8 +1354,9 @@ const app = new Hono<App>()
 			if (verifiedPlatformId !== null) platformId = verifiedPlatformId
 
 			// Resolve the account this token is for:
-			//  - create_account: mint + persist a brand-new account (auto-assigned random
-			//    username — players don't pick one initially); the token's `sub` is its id.
+			//  - create_account: mint + persist a brand-new account (random username
+			//    except when a password-only website signup supplies signup_username);
+			//    the token's `sub` is its id.
 			//    A `password` may be posted to establish the account's login credential.
 			//  - refresh_token: redeem a stored (single-use) refresh token for its account +
 			//    platform, so an expiring session renews without re-login.
@@ -1481,21 +1486,48 @@ const app = new Hono<App>()
 					)
 				}
 
+				// A website signup may choose its username; platform clients retain their
+				// existing random-name behavior. Validate with the same rules as the
+				// profile username editor, and reject duplicates before minting an account.
+				// The INSERT checks uniqueness again to protect concurrent signups.
+				const chosenUsername =
+					!platformAsserted && typeof body.signup_username === 'string'
+						? body.signup_username.trim()
+						: null
+				if (chosenUsername !== null) {
+					const rejection =
+						chosenUsername === ''
+							? 'You must enter a username.'
+							: (nameRejection(chosenUsername, 'username', MAX_USERNAME_LENGTH) ??
+								(nameContainsSwears(chosenUsername) ? 'That username cannot be used.' : null))
+					if (rejection) return oauthError(c, 'invalid_grant', rejection)
+					if (await getAccountByUsername(c.env.DB, chosenUsername))
+						return oauthError(c, 'invalid_grant', 'That username is already taken.')
+				}
+
 				// Bind the platform identity ONLY when the platform proved it (a Steam ticket or
 				// a Meta-validated nonce). A password/anonymous create_account (no platform)
 				// binds nothing. The account blob keeps this first identity as its PRIMARY one
 				// (for the account DTO and the refresh grant's claims); the link written just
 				// below is what a later cached login is actually authorized against.
-				const account = await createAccount(c.env.DB, {
-					platforms: platformInt || 0,
-					platform: verifiedPlatform ?? undefined,
-					platformId: verifiedPlatformId ?? undefined,
-					lastLoginTime: new Date().toISOString(),
-					deviceId: deviceId || undefined,
-					deviceClass: deviceId ? deviceClass : undefined,
-					signupIp: clientIp || undefined,
-					lastLoginIp: clientIp || undefined,
-				})
+				let account
+				try {
+					account = await createAccount(c.env.DB, {
+						username: chosenUsername ?? undefined,
+						platforms: platformInt || 0,
+						platform: verifiedPlatform ?? undefined,
+						platformId: verifiedPlatformId ?? undefined,
+						lastLoginTime: new Date().toISOString(),
+						deviceId: deviceId || undefined,
+						deviceClass: deviceId ? deviceClass : undefined,
+						signupIp: clientIp || undefined,
+						lastLoginIp: clientIp || undefined,
+					})
+				} catch (err) {
+					if (err instanceof UsernameTakenError)
+						return oauthError(c, 'invalid_grant', 'That username is already taken.')
+					throw err
+				}
 				accountId = String(account.accountId)
 				if (verifiedPlatformId !== null) {
 					await linkPlatformIdentity(

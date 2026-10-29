@@ -1276,6 +1276,37 @@ describe('auth worker routes', () => {
 		expect(login.status).toBe(200)
 	})
 
+	test('website signup accepts a chosen username and rejects a case-insensitive duplicate', async () => {
+		const first = await postToken(
+			'grant_type=create_account&password=correct-horse&signup_username=ChosenPlayer2026',
+			'198.51.100.101'
+		)
+		expect(first.status).toBe(200)
+		const account = await env.DB.prepare('SELECT data FROM account WHERE username_lower = ?1')
+			.bind('chosenplayer2026')
+			.first<{ data: string }>()
+		expect(JSON.parse(account!.data).username).toBe('ChosenPlayer2026')
+
+		const before = await env.DB.prepare('SELECT COUNT(*) AS n FROM account').first<{ n: number }>()
+		const duplicate = await postToken(
+			'grant_type=create_account&password=correct-horse&signup_username=chosenplayer2026',
+			'198.51.100.102'
+		)
+		expect(duplicate.status).toBe(400)
+		expect(duplicate.json.error_description).toBe('That username is already taken.')
+		const after = await env.DB.prepare('SELECT COUNT(*) AS n FROM account').first<{ n: number }>()
+		expect(after?.n).toBe(before?.n)
+
+		const invalid = await postToken(
+			'grant_type=create_account&password=correct-horse&signup_username=Not_Allowed',
+			'198.51.100.103'
+		)
+		expect(invalid.status).toBe(400)
+		expect(invalid.json.error_description).toContain('letters and numbers')
+		const other = await env.DB.prepare('SELECT COUNT(*) AS n FROM account').first<{ n: number }>()
+		expect(other?.n).toBe(before?.n)
+	})
+
 	test('PASSWORD_SIGNUP=off refuses a no-platform create_account and mints nothing', async () => {
 		// The switch the website's signup hangs off. Every other create_account test here
 		// runs with it ON (see vitest.config.ts); this one is the closed door.

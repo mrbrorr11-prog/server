@@ -556,9 +556,9 @@ async function signIn(username: string, password: string): Promise<void> {
  * Turnstile and that check needs a secret key a page can't hold. www hands back auth's
  * token response unchanged, so the session is established just as sign-in establishes it.
  */
-async function signUp(password: string, turnstileToken: string): Promise<void> {
+async function signUp(username: string, password: string, turnstileToken: string): Promise<void> {
 	const data = await call<{ access_token?: string }>('/api/signup', {
-		json: { password, turnstileToken },
+		json: { username: username.trim(), password, turnstileToken },
 	})
 	if (typeof data.access_token !== 'string') throw new Error(authUnreachable('signup'))
 	setToken(data.access_token)
@@ -3165,8 +3165,8 @@ function LoginPage({
 					<>
 						<h2>Create account</h2>
 						<p className="muted">
-							A username is assigned for you — you&apos;ll see it on your account page. Choose a
-							password, and the two together sign you in here and in the game.
+							Choose a username and password to sign in here and in the game. Usernames
+							must be unique and can contain letters and numbers only.
 						</p>
 						<SignupForm siteKey={siteKey} onAuthed={authed} />
 					</>
@@ -4557,10 +4557,9 @@ function useTurnstile(siteKey: string) {
 }
 
 /**
- * Create an account from the website: a password, plus a Turnstile token proving a human
- * filled the form. The username comes back auto-assigned from `auth` (players don't pick
- * one), and the session is live on success — so this lands on the account page, where the
- * username is shown.
+ * Create an account from the website with a chosen username and password, plus a
+ * Turnstile token proving a human filled the form. The session is live on success
+ * and the account page shows the username.
  */
 function SignupForm({
 	siteKey,
@@ -4569,6 +4568,7 @@ function SignupForm({
 	siteKey: string
 	onAuthed: (a: SelfAccount) => void
 }) {
+	const [username, setUsername] = useState('')
 	const [password, setPassword] = useState('')
 	const [email, setEmail] = useState('')
 	const { container, token: widgetToken, error: widgetError, reset } = useTurnstile(siteKey)
@@ -4582,7 +4582,7 @@ function SignupForm({
 					const wanted = email.trim()
 
 					try {
-						await signUp(password, widgetToken)
+						await signUp(username, password, widgetToken)
 					} catch (err) {
 						// The widget token is spent either way, so re-arm before they retry. Only
 						// a failed signup gets here — past this point the account exists, and a
@@ -4609,6 +4609,20 @@ function SignupForm({
 				})
 			}}
 		>
+			<label>
+				Username
+				<input
+					type="text"
+					value={username}
+					autoComplete="username"
+					maxLength={50}
+					pattern="[A-Za-z0-9]+"
+					title="Letters and numbers only."
+					onChange={(e) => setUsername(e.target.value)}
+					required
+				/>
+				<span className="hint">Up to 50 letters and numbers; must not already be taken.</span>
+			</label>
 			<label>
 				Password
 				<input

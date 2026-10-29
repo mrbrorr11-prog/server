@@ -29,6 +29,13 @@ export const PASSWORD_SIGNUP_DISABLED =
 
 const AUTH_MESSAGES: Record<string, string> = {
 	'password signup is disabled': PASSWORD_SIGNUP_DISABLED,
+	'That username is already taken.': 'That username is already taken. Please choose another.',
+	'That username cannot be used.': 'That username cannot be used. Please choose another.',
+	'You must enter a username.': 'Enter a username to create your account.',
+	'Your username can only contain letters and numbers.':
+		'Your username can only contain letters and numbers.',
+	'Your username can be at most 50 characters.':
+		'Your username can be at most 50 characters.',
 	'too many accounts created from this network':
 		'Too many accounts have already been created from your network. Try again later, or from a different connection.',
 	'account limit reached for this platform account':
