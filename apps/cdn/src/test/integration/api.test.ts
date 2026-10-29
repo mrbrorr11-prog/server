@@ -44,7 +44,7 @@ test('room scenes saved in free KV reload with accurate byte ranges and ETags', 
 	const key = 'room/2026-10-30/00000000-0000-0000-0000-000000000000'
 	const bytes = new TextEncoder().encode('saved maker pen objects and metadata')
 	const hash = await crypto.subtle.digest('SHA-256', bytes)
-	await putKvRoomBlob(env.RECFLARE_ROOM_BLOBS, key, bytes.buffer, hash)
+	await putKvRoomBlob(env.RECFLARE_ROOM_BLOBS, key, bytes.buffer as ArrayBuffer, hash)
 	const url = ORIGIN + '/' + key
 	const full = await exports.default.fetch(url)
 	expect(full.status).toBe(200)
