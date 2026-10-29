@@ -67,6 +67,20 @@ test('room scenes saved in free KV reload with accurate byte ranges and ETags', 
 	expect(impossible.status).toBe(416)
 })
 
+test('free room data ranges can cross the boundary between KV chunks', async () => {
+	const key = 'room/2026-10-30/11111111-1111-1111-1111-111111111111'
+	const bytes = new Uint8Array(4 * 1024 * 1024 + 8)
+	const edge = 4 * 1024 * 1024 - 2
+	bytes.set([10, 20, 30, 40, 50], edge)
+	const hash = await crypto.subtle.digest('SHA-256', bytes)
+	await putKvRoomBlob(env.RECFLARE_ROOM_BLOBS, key, bytes.buffer, hash)
+	const response = await exports.default.fetch(ORIGIN + '/' + key, {
+		headers: { Range: `bytes=${edge}-${edge + 4}` },
+	})
+	expect(response.status).toBe(206)
+	expect(Array.from(new Uint8Array(await response.arrayBuffer()))).toEqual([10, 20, 30, 40, 50])
+})
+
 describe('cdn endpoints', () => {
 	test('GET / reports service status', async () => {
 		const res = await exports.default.fetch(`${ORIGIN}/`)
