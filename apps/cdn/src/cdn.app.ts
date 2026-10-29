@@ -487,8 +487,12 @@ async function studioUnityAssetHead(env: StudioAssetEnv, name: string): Promise<
 	if (!head && !r2head) return new Response(null, { status: 404 })
 
 	const headers = new Headers()
-	head.writeHttpMetadata(headers)
-	headers.set('etag', head.httpEtag)
+	if (r2head) {
+		r2head.writeHttpMetadata(headers)
+		headers.set('etag', r2head.httpEtag)
+	} else {
+		headers.set('etag', `"${head!.etag}"`)
+	}
 	headers.set('accept-ranges', 'bytes')
 	headers.set('cache-control', CACHE_CONTROL)
 	headers.set('access-control-allow-origin', '*')
