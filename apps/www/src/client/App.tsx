@@ -228,7 +228,7 @@ function handleWebsiteImageError(event: SyntheticEvent<HTMLImageElement>) {
 
 /** The signed-in account, straight from `accounts`. */
 const fetchMe = (): Promise<SelfAccount> =>
-	call<SelfAccount>(`${where().accounts}/account/me`, { authed: true })
+	call<SelfAccount>(`${where().accounts}/account/me`, { authed: true, timeoutMs: 12000 })
 
 /**
  * The caller's own rooms, from the `rooms` worker — the same list the game's "My Rooms"
@@ -2516,6 +2516,7 @@ function HalloweenOverlay() {
 export function App() {
 	// undefined = still checking the session; null = signed out.
 	const [account, setAccount] = useState<SelfAccount | null | undefined>(undefined)
+	const [sessionError, setSessionError] = useState('')
 	// undefined until the config lands. Signup is treated as closed until told otherwise,
 	// so a slow (or failed) config fetch can't flash a form the server would refuse.
 	const [config, setConfig] = useState<SiteConfig | undefined>(undefined)
@@ -2530,18 +2531,29 @@ export function App() {
 		// Config first, and everything else after it: it carries the hostnames every other
 		// call needs. A config that doesn't land leaves the page signed out with signup
 		// closed rather than guessing where the workers are.
-		call<SiteConfig & { hosts: Hosts }>('/api/config')
+		call<SiteConfig & { hosts: Hosts }>('/api/config', { timeoutMs: 12000 })
 			.then(async ({ hosts: resolved, ...site }) => {
 				setHosts(resolved)
 				setConfig(site)
+				setSessionError('')
 				if (!hasToken()) return setAccount(null)
-				// A stored token that `accounts` rejects is stale — `call` has already dropped
-				// it, so this just falls back to signed-out rather than surfacing an error.
+				// Show a clear error instead of silently redirecting away from
+				// profile editing when the accounts worker is down or times out.
 				await fetchMe()
 					.then(setAccount)
-					.catch(() => setAccount(null))
+					.catch((err: unknown) => {
+						setSessionError(err instanceof Error
+							? err.name === 'TimeoutError' ? 'The accounts server timed out. Try again.' : err.message
+							: 'Could not load your account. Try again.')
+						setAccount(null)
+					})
 			})
-			.catch(() => {
+			.catch((err: unknown) => {
+				setSessionError(err instanceof Error
+					? err.name === 'TimeoutError'
+						? 'The website configuration timed out. Try refreshing.'
+						: `Could not load the website configuration: ${err.message}`
+					: 'Could not load website configuration.')
 				setConfig({
 					signupEnabled: false,
 					turnstileSiteKey: null,
@@ -2588,7 +2600,7 @@ export function App() {
 				// auth; this page only approves it with the website session.
 				<DeviceLinkPage account={account} search={search} navigate={navigate} />
 			) : path === '/account' ? (
-				<AccountPage account={account} config={config} navigate={navigate} onChange={setAccount} />
+				<AccountPage account={account} config={config} navigate={navigate} onChange={setAccount} error={sessionError} />
 			) : path === '/claim' ? (
 				// Its own page rather than a dashboard tab: this path is Discord's registered
 				// redirect URI, so it has to be one stable URL a cold load can land on.
@@ -3320,15 +3332,31 @@ function AccountPage({
 	config,
 	navigate,
 	onChange,
+	error,
 }: {
 	account: SelfAccount | null | undefined
 	config: SiteConfig | undefined
 	navigate: Navigate
 	onChange: (a: SelfAccount) => void
+	error: string
 }) {
 	useEffect(() => {
-		if (account === null) navigate('/login')
-	}, [account, navigate])
+		if (account === null && !error) navigate('/login')
+	}, [account, navigate, error])
+
+	if (error) {
+		return (
+			<main className="shell">
+				<section className="card">
+					<h1>Could not load profile settings</h1>
+					<p className="error">{error}</p>
+					<p className="muted">Check that the accounts and auth Workers are deployed, then retry.</p>
+					<button type="button" onClick={() => window.location.reload()}>Retry</button>
+					<p><Link to="/login" navigate={navigate}>Sign in again</Link></p>
+				</section>
+			</main>
+		)
+	}
 
 	if (!account) {
 		return (
