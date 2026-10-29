@@ -584,3 +584,19 @@ html, body, #root { background: #fff; }
   .brand::before { width: 26px; height: 26px; font-size: 13px; }
   .nav-links a[href="/account"], .nav-links a[href="/login"] { padding: 8px 10px; }
 }
+
+/* Edit profile action (RecFlare) */
+.edit-profile-link {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 9px 17px;
+  border-radius: 5px;
+  color: #fff;
+  background: #bf5128;
+  font-weight: 750;
+  text-decoration: none;
+}
+.edit-profile-link:hover, .edit-profile-link:focus-visible {
+  color: #fff;
+  background: #993e1d;
+}
