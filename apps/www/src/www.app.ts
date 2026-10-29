@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import { getAccount, updateAccount } from '@repo/domain/src/accounts-db'
+import { MAX_USERNAME_LENGTH, nameRejection } from '@repo/domain/src/validation'
 import { PlatformType } from '@repo/domain/src/enums'
 import { countOnlinePlayers } from '@repo/domain/src/presence-db'
 import { getStatSeries } from '@repo/domain/src/stats-db'
@@ -306,7 +307,7 @@ const app = new Hono<App>()
 	//
 	// Deliberately passes NO `platform`: create_account treats an asserted platform as one
 	// to verify against Steam and would reject RecNet, so this is the platform-less
-	// password-account path. The username is auto-assigned by auth — players don't pick one.
+	// password-account path. A chosen username is passed as signup_username to auth.
 	//
 	// On success auth's token response is returned VERBATIM, so the SPA stores it the same
 	// way it stores the one it gets from calling `/connect/token` itself to sign in. The
@@ -318,11 +319,15 @@ const app = new Hono<App>()
 		const keys = await turnstileKeys(c.env)
 		if (!keys) return c.json({ error: 'Account creation is currently disabled.' }, 403)
 
-		type SignupBody = { password?: string; turnstileToken?: string }
-		const { password, turnstileToken } = await c.req
+		type SignupBody = { username?: string; password?: string; turnstileToken?: string }
+		const { username, password, turnstileToken } = await c.req
 			.json<SignupBody>()
 			.catch(() => ({}) as SignupBody)
 		if (!password) return c.json({ error: 'A password is required.' }, 400)
+		const chosenUsername = typeof username === 'string' ? username.trim() : ''
+		if (!chosenUsername) return c.json({ error: 'You must enter a username.' }, 400)
+		const usernameError = nameRejection(chosenUsername, 'username', MAX_USERNAME_LENGTH)
+		if (usernameError) return c.json({ error: usernameError }, 400)
 		if (!turnstileToken) return c.json({ error: 'Please complete the bot check.' }, 400)
 
 		// The IP Turnstile cross-checks the token against — set by the edge, so the client
@@ -341,7 +346,7 @@ const app = new Hono<App>()
 		const res = await postAuthForm(
 			c.env,
 			'/connect/token',
-			{ grant_type: 'create_account', password },
+			{ grant_type: 'create_account', password, signup_username: chosenUsername }
 			{ clientIp }
 		).catch(() => null)
 		if (res === null) {
