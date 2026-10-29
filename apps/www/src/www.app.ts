@@ -346,7 +346,7 @@ const app = new Hono<App>()
 		const res = await postAuthForm(
 			c.env,
 			'/connect/token',
-			{ grant_type: 'create_account', password, signup_username: chosenUsername }
+			{ grant_type: 'create_account', password, signup_username: chosenUsername },
 			{ clientIp }
 		).catch(() => null)
 		if (res === null) {
