@@ -10,15 +10,39 @@ import type { Env } from './context'
  * calls itself is `auth`, for the Turnstile-gated signup grant (see `postAuthForm`).
  */
 
-export const authBase = (env: Env): string => `https://auth.${env.DOMAIN}`
-export const accountsBase = (env: Env): string => `https://accounts.${env.DOMAIN}`
-export const notifyBase = (env: Env): string => `https://notify.${env.DOMAIN}`
-export const apiBase = (env: Env): string => `https://api.${env.DOMAIN}`
-export const imgBase = (env: Env): string => `https://img.${env.DOMAIN}`
-export const roomsBase = (env: Env): string => `https://rooms.${env.DOMAIN}`
-export const cdnBase = (env: Env): string => `https://cdn.${env.DOMAIN}`
-export const storageBase = (env: Env): string => `https://storage.${env.DOMAIN}`
+/** 
+ * Use the same subdomain overrides as the nameserver discovery document.
+ * Deploys can rename or merge workers via RECFLARE_SUBDOMAINS; hardcoding
+ * img/accounts/auth/etc. here makes the website ask the wrong hosts and leaves
+ * pictures blank or account settings stuck when a worker is renamed.
+ */
+function hostBase(env: Env, service: string): string {
+	let subdomain = service
+	const raw = (env as Env & { SUBDOMAINS?: string }).SUBDOMAINS
+	if (raw) {
+		try {
+			const parsed: unknown = JSON.parse(raw)
+			if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+				const override = (parsed as Record<string, unknown>)[service]
+				if (typeof override === 'string' && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(override)) {
+					subdomain = override
+				}
+			}
+		} catch {
+			// Keep the default if an operator supplied malformed override JSON.
+		}
+	}
+	return `https://${subdomain}.${env.DOMAIN}`
+}
 
+export const authBase = (env: Env): string => hostBase(env, 'auth')
+export const accountsBase = (env: Env): string => hostBase(env, 'accounts')
+export const notifyBase = (env: Env): string => hostBase(env, 'notify')
+export const apiBase = (env: Env): string => hostBase(env, 'api')
+export const imgBase = (env: Env): string => hostBase(env, 'img')
+export const roomsBase = (env: Env): string => hostBase(env, 'rooms')
+export const cdnBase = (env: Env): string => hostBase(env, 'cdn')
+export const storageBase = (env: Env): string => hostBase(env, 'storage')
 /**
  * POST a form body to the `auth` worker, carrying the browser's real IP across.
  *
