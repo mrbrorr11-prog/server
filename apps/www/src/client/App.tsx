@@ -35,7 +35,7 @@ import { PumpleBossFight } from './PumpleBossFight'
 import { StatsPage } from './Stats'
 import { StudioAccessPage } from './StudioAccess'
 
-import type { ReactNode } from 'react'
+import type { ReactNode, SyntheticEvent } from 'react'
 import type { Hosts, PublicAccount } from './api'
 
 /**
@@ -190,6 +190,41 @@ const ACCESSIBILITY_LABEL: Record<number, string> = {
  * account path.
  */
 const WEB_PLATFORM = '4'
+
+/**
+ * Website images ask the image worker to report genuinely missing uploads.
+ * This keeps a missing room image distinct from the default account avatar.
+ * Encoding each path segment preserves the slash-separated keys in R2.
+ */
+function imageUrl(key: string | undefined | null, width?: number): string {
+	const path = (key || '').split('/').map(encodeURIComponent).join('/')
+	return `${where().img}/${path}?noFallback=1${width ? `&width=${width}` : ''}`
+}
+
+const missingImageSvg = `data:image/svg+xml,${encodeURIComponent(
+	'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="280" viewBox="0 0 400 280"><rect width="400" height="280" fill="#f7f0eb"/><rect x="24" y="24" width="352" height="232" rx="16" fill="#fff" stroke="#e4c6b8" stroke-width="4"/><path d="M119 170l50-57 45 50 30-32 48 39" stroke="#cc8363" stroke-width="10" fill="none" stroke-linejoin="round"/><circle cx="135" cy="98" r="16" fill="#cc8363"/><text x="200" y="218" text-anchor="middle" fill="#9b4a30" font-family="sans-serif" font-size="19">Image unavailable</text></svg>'
+)}`
+
+/** A failed resize gets one retry as the original image, then a visible fallback. */
+function handleWebsiteImageError(event: SyntheticEvent<HTMLImageElement>) {
+	const img = event.currentTarget
+	if (img.dataset.imageRetry === 'final') return
+	if (img.dataset.imageRetry !== 'original') {
+		try {
+			const url = new URL(img.src)
+			if (url.searchParams.has('width')) {
+				url.searchParams.delete('width')
+				img.dataset.imageRetry = 'original'
+				img.src = url.toString()
+				return
+			}
+		} catch {
+			// A malformed URL also falls back to a local SVG.
+		}
+	}
+	img.dataset.imageRetry = 'final'
+	img.src = missingImageSvg
+}
 
 /** The signed-in account, straight from `accounts`. */
 const fetchMe = (): Promise<SelfAccount> =>
@@ -1374,9 +1409,9 @@ function SiteSearch({ navigate }: { navigate: Navigate }) {
 								>
 									<img
 										className="site-search-avatar"
-										src={`${where().img}/${r.profileImage}?width=64`}
+										src={imageUrl(r.profileImage, 64)}
 										alt=""
-									/>
+									onError={handleWebsiteImageError} />
 									<span>
 										<span className="site-search-name">{r.displayName || r.username}</span>
 										<span className="site-search-sub">@{r.username}</span>
@@ -1397,9 +1432,9 @@ function SiteSearch({ navigate }: { navigate: Navigate }) {
 								>
 									<img
 										className="site-search-thumb"
-										src={`${where().img}/${r.ImageName}?width=128`}
+										src={imageUrl(r.ImageName, 128)}
 										alt=""
-									/>
+									onError={handleWebsiteImageError} />
 									<span>
 										<span className="site-search-name">^{r.Name}</span>
 										<span className="site-search-sub">
@@ -1451,10 +1486,10 @@ function PhotoGrid({ photos }: { photos: PublicPhoto[] }) {
 					>
 						<img
 							className="photo-thumb"
-							src={`${where().img}/${p.ImageName}?width=256`}
+							src={imageUrl(p.ImageName, 256)}
 							alt=""
 							loading="lazy"
-						/>
+						onError={handleWebsiteImageError} />
 						{/* Only the owner's own list ever carries a private photo (see
 						    fetchPlayerPhotos), so this is the mark that tells them which of theirs
 						    nobody else can see. */}
@@ -1473,7 +1508,7 @@ function PhotoGrid({ photos }: { photos: PublicPhoto[] }) {
 					onClose={() => setOpen(null)}
 					onClick={() => setOpen(null)}
 				>
-					<img src={`${where().img}/${open.ImageName}`} alt="" />
+					<img src={imageUrl(open.ImageName)} alt="" onError={handleWebsiteImageError} />
 				</dialog>
 			)}
 		</>
@@ -1530,7 +1565,7 @@ function ImagePage({ imageId, config }: { imageId: number; config: SiteConfig | 
 					There&apos;s no image here — it&apos;s private, or it doesn&apos;t exist.
 				</p>
 			) : (
-				<img src={`${where().img}/${image.ImageName}`} alt="" />
+				<img src={imageUrl(image.ImageName)} alt="" onError={handleWebsiteImageError} />
 			)}
 		</main>
 	)
@@ -1612,16 +1647,16 @@ function PlayerPage({
 				{account.bannerImage && (
 					<img
 						className="player-banner"
-						src={`${where().img}/${account.bannerImage}?width=1024`}
+						src={imageUrl(account.bannerImage, 1024)}
 						alt=""
-					/>
+					onError={handleWebsiteImageError} />
 				)}
 				<div className="player-hero-body">
 					<img
 						className="player-avatar"
-						src={`${where().img}/${account.profileImage}?width=256`}
+						src={imageUrl(account.profileImage, 256)}
 						alt=""
-					/>
+					onError={handleWebsiteImageError} />
 					<div>
 						<h1>{account.displayName || account.username}</h1>
 						{viewer?.accountId === account.accountId && (
@@ -1650,10 +1685,10 @@ function PlayerPage({
 								<Link to={`/rooms/${room.RoomId}`} navigate={navigate} className="room-link">
 									<img
 										className="room-thumb"
-										src={`${where().img}/${room.ImageName}?width=256`}
+										src={imageUrl(room.ImageName, 256)}
 										alt=""
 										loading="lazy"
-									/>
+									onError={handleWebsiteImageError} />
 									<div className="room-body">
 										<span className="room-name">^{room.Name}</span>
 										<p className="room-stats">{room.Stats.VisitCount.toLocaleString()} visits</p>
@@ -2749,7 +2784,7 @@ function useSlideshow(config: SiteConfig | undefined) {
 			const d = await call<Feed>(`${h.api}/api/images/v1/slideshow?take=${SLIDESHOW_TAKE}`)
 			setSlides(
 				(d.Images ?? []).map((i) => ({
-					url: `${h.img}/${i.ImageName}`,
+					url: imageUrl(i.ImageName),
 					username: i.Username,
 					roomName: i.RoomName,
 				}))
@@ -2867,7 +2902,7 @@ function Stage({
 							key={slide.url}
 							src={slide.url}
 							alt={`Photo taken in game by ${slide.username}`}
-						/>
+						onError={handleWebsiteImageError} />
 					)}
 				</div>
 				{/* Always mounted, so the frame doesn't shift down when the feed lands. */}
@@ -2967,7 +3002,7 @@ function HomeDiscovery({
 						<div className="featured-room-grid">
 							{rooms.map((room) => (
 								<Link key={room.RoomId} to={`/rooms/${room.RoomId}`} navigate={navigate} className="featured-room-card">
-									<img src={`${where().img}/${room.ImageName}?width=256`} alt="" loading="lazy" />
+									<img src={imageUrl(room.ImageName, 256)} alt="" loading="lazy" onError={handleWebsiteImageError} />
 									<div className="featured-room-meta">
 										<strong>^{room.Name}</strong>
 										<small>{room.Stats.VisitCount.toLocaleString()} visits</small>
@@ -2991,7 +3026,7 @@ function HomeDiscovery({
 					<div className="community-photo-grid">
 						{slides.slice(0, 6).map((slide, index) => (
 							<figure className="community-photo" key={`${slide.url}-${index}`}>
-								<img src={slide.url} alt={`In-game photo by ${slide.username}`} loading="lazy" />
+								<img src={slide.url} alt={`In-game photo by ${slide.username}`} loading="lazy" onError={handleWebsiteImageError} />
 								<figcaption>By @{slide.username}{slide.roomName ? ` · ${slide.roomName}` : ''}</figcaption>
 							</figure>
 						))}
@@ -3481,7 +3516,7 @@ function PublicRoomView({
 	return (
 		<>
 			<section className="card room-hero">
-				<img className="room-hero-img" src={`${where().img}/${room.ImageName}?width=512`} alt="" />
+				<img className="room-hero-img" src={imageUrl(room.ImageName, 512)} alt="" onError={handleWebsiteImageError} />
 				<div className="room-hero-body">
 					<div className="room-head">
 						<h1 className="room-hero-name">^{room.Name}</h1>
@@ -4181,7 +4216,7 @@ function ImageUpload({
 		// hidden visually rather than with `display: none`, which keeps it in the tab
 		// order — the focus ring is drawn on the label around it.
 		<label className={`image-upload ${className ?? ''}`} aria-busy={pending}>
-			<img className={imgClassName} src={src} alt="" />
+			<img className={imgClassName} src={src} alt="" onError={handleWebsiteImageError} />
 			<span className="image-upload-hint">{pending ? 'Uploading…' : hint}</span>
 			<input
 				type="file"
@@ -4275,7 +4310,7 @@ function ProfileImageUpload({
 	return (
 		<>
 			<ImageUpload
-				src={`${where().img}/${account.profileImage}?width=256`}
+				src={imageUrl(account.profileImage, 256)}
 				className="identity-avatar-upload"
 				imgClassName="identity-avatar"
 				hint="Change"
@@ -4869,7 +4904,7 @@ function BannerUpload({
 				// (the profile's empty-banner look) rather than a stretched default avatar.
 				src={
 					account.bannerImage
-						? `${where().img}/${account.bannerImage}?width=1024`
+						? imageUrl(account.bannerImage, 1024)
 						: 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
 				}
 				className="banner-upload"
@@ -4919,10 +4954,10 @@ function RoomCard({
 			<Link to={`/rooms/${room.RoomId}`} navigate={navigate} className="room-link">
 				<img
 					className="room-thumb"
-					src={`${imgHost}/${room.ImageName}?width=256`}
+					src={`${imgHost}/${room.ImageName}?width=256&noFallback=1`}
 					alt=""
 					loading="lazy"
-				/>
+				onError={handleWebsiteImageError} />
 				<div className="room-body">
 					<div className="room-head">
 						{/* The caret is how the game writes a room name, so it reads as the thing you
