@@ -552,6 +552,11 @@ app.get(
 		// DefaultProfileImage.jpg static asset so clients still get a valid image instead
 		// of a 404. Honour `?sig=p1` the same way so the fallback is signed like any other.
 		const serveFallback = async () => {
+			// The website opts into a real 404, so it can show an honest
+			// "Image unavailable" placeholder instead of displaying the same
+			// default avatar for every missing room photo. Game clients still
+			// receive the historical 200 image fallback.
+			if (c.req.query('noFallback') === '1') return c.body(null, 404)
 			const asset = await c.env.ASSETS.fetch(new URL(FALLBACK_ASSET_PATH, c.req.url))
 			return serveStaticAsset(c.env, asset, transform, signing)
 		}
