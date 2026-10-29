@@ -418,3 +418,169 @@ button { font-family: var(--body); }
   html { scroll-behavior: auto; }
   .featured-room-card { transition: none; }
 }
+
+/* Orange masthead and white page (RecFlare 2026).
+   Adapted from the supplied visual reference; RecFlare's own identity, routing,
+   account settings, and all authentication components remain unchanged. */
+:root {
+  color-scheme: light;
+  --bg: #fff;
+  --surface: #fff;
+  --surface-hi: #fff8f4;
+  --line: #e9e1dc;
+  --text: #28242a;
+  --muted: #64616a;
+  --accent: #bf5128;
+  --accent-hover: #a63f1d;
+  --accent-text: #fff;
+}
+html, body, #root { background: #fff; }
+.nav {
+  position: relative;
+  z-index: 40;
+  max-width: none;
+  margin: 0;
+  min-height: 90px;
+  padding: 12px max(22px, calc((100vw - 1250px) / 2));
+  gap: 16px 22px;
+  background: #d96a3c;
+  border: 0;
+  box-shadow: none;
+}
+.brand {
+  min-height: 56px;
+  padding: 0;
+  transform: none;
+  box-shadow: none;
+  border-radius: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 1.5rem;
+  letter-spacing: -.055em;
+  white-space: nowrap;
+}
+.brand:hover { background: transparent; color: #fff; }
+.brand::before {
+  content: "✦";
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 33px;
+  border: 3px solid #fff;
+  border-radius: 8px;
+  background: transparent;
+  color: #fff;
+  font-size: 17px;
+  line-height: 1;
+}
+.nav .brand, .nav .brand span, .nav .brand-wordmark span { color: #fff; }
+.nav-explore { gap: 3px; }
+.nav-links { gap: 9px; }
+.nav-explore a, .nav-links a, .nav-links .linkish {
+  padding: 10px 11px;
+  border-radius: 4px;
+  color: #fff;
+  font-family: var(--display);
+  font-size: .75rem;
+  font-weight: 800;
+  line-height: 1.4;
+  letter-spacing: .075em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.nav-explore a:hover, .nav-explore a:focus-visible,
+.nav-links a:hover, .nav-links a:focus-visible,
+.nav-links .linkish:hover, .nav-links .linkish:focus-visible,
+.nav-links a.active {
+  color: #fff;
+  background: rgb(255 255 255 / 17%);
+}
+.nav-links .support-link,
+.nav-links a[href="/login"],
+.nav-links a[href="/account"] {
+  padding: 10px 15px;
+  color: #fff;
+  background: transparent;
+  border: 2px solid #fff;
+  border-radius: 4px;
+}
+.nav-links .support-link:hover,
+.nav-links a[href="/login"]:hover,
+.nav-links a[href="/account"]:hover {
+  color: #a64420;
+  background: #fff;
+  border-color: #fff;
+}
+.nav .site-search-toggle {
+  color: #fff;
+  background: rgb(255 255 255 / 13%);
+  border-color: rgb(255 255 255 / 68%);
+}
+.nav .site-search-toggle:hover,
+.nav .site-search-toggle.active { color: #fff; background: rgb(255 255 255 / 27%); }
+.nav .site-search-panel { color: var(--text); }
+.nav :focus-visible { outline-color: #fff; }
+.stage {
+  min-height: 400px;
+  padding: 55px max(20px, calc((100vw - 1180px) / 2)) 52px;
+  background: #fff;
+}
+.stage::before, .stage::after { display: none; }
+.stage-title, .stage-title em { color: #28242a; text-shadow: none; }
+.stage-title em { color: #d96a3c; }
+.stage-eyebrow {
+  background: #fff0e9;
+  color: #aa4120;
+  box-shadow: none;
+}
+.stage-lede, .stage-alt, .stage-alt a, .stage-foot { color: #5d5861; }
+.stage-alt a { color: #9d3d1a; }
+.stage-actions .cta {
+  color: #fff;
+  background: #bf5128;
+  border-color: #bf5128;
+  border-radius: 5px;
+  box-shadow: none;
+}
+.stage-actions .cta:hover { color: #fff; background: #a63f1d; border-color: #a63f1d; }
+.stage-actions .cta.discord {
+  color: #544275;
+  background: #fff;
+  border: 2px solid #d9d0e2;
+}
+.stage-actions .cta.discord:hover { background: #f7f3fa; border-color: #a99bbc; }
+.stage-frame {
+  transform: none;
+  border: 5px solid #fff;
+  box-shadow: 0 14px 35px rgb(37 27 22 / 13%);
+}
+.stage-photo-tag { color: #aa4120; }
+.steer button { color: #a64420; }
+.steer button:hover { color: #853518; }
+.shell.home { background: #fff; }
+.card { box-shadow: 0 4px 22px rgb(30 20 20 / 4%); }
+@media (max-width: 1060px) {
+  .nav { padding-inline: 20px; }
+  .nav-explore a, .nav-links a, .nav-links .linkish { padding: 9px; }
+}
+@media (max-width: 760px) {
+  .nav { min-height: 0; gap: 8px 14px; }
+  .brand { min-height: 44px; font-size: 1.22rem; }
+  .nav-explore {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+  .nav-explore a { flex: 0 0 auto; }
+  .nav-links { margin-left: auto; gap: 5px; }
+  .nav-links a, .nav-links .linkish { font-size: .69rem; letter-spacing: .035em; }
+  .nav-links .support-link { display: none; }
+  .stage { min-height: 0; padding: 36px 20px 42px; }
+}
+@media (max-width: 400px) {
+  .brand { font-size: 1.05rem; }
+  .brand::before { width: 26px; height: 26px; font-size: 13px; }
+  .nav-links a[href="/account"], .nav-links a[href="/login"] { padding: 8px 10px; }
+}
