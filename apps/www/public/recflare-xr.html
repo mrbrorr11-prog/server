@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#ff6c32">
+<title>RecFlare XR — Free Quest Browser Prototype</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#9ab9e0;color:#fff}
+canvas{display:block}
+#hud{position:fixed;top:16px;left:16px;width:min(355px,calc(100vw - 32px));max-height:min(82vh,700px);overflow-y:auto;z-index:2;background:#14243add;border:1px solid #ffffff38;border-radius:20px;padding:19px;backdrop-filter:blur(14px);box-shadow:0 10px 42px #00172d50}
+#hud h1{margin:0;font-size:1.6rem;letter-spacing:-.03em}
+#hud h1 span{color:#ff874c}
+#hud p{margin:7px 0 15px;color:#e9f2ffce;font-size:13px;line-height:1.55}
+#status{font-size:12px;display:block;color:#9fe0ff;margin:5px 0 11px}
+#rooms{display:grid;gap:7px}
+#rooms button,#back{cursor:pointer;border:1px solid #ffffff37;border-radius:10px;color:#fff;background:#ffffff1b;font-size:13px;text-align:left;padding:10px 12px}
+#rooms button:hover,#rooms button:focus-visible,#back:hover{background:#ff774b;color:#12243a}
+#back{width:100%;text-align:center;margin-top:10px;background:#ff7341;border:0;font-weight:750}
+#help{font-size:12px!important;margin-top:12px!important}
+#vr{position:fixed;right:20px;bottom:20px;z-index:3}
+#vr button{background:#fa6936!important;border-radius:99px!important;border:2px solid white!important;font-weight:800!important;padding:16px 24px!important}
+#loading{position:fixed;inset:0;display:grid;place-items:center;background:#172843;color:#fff;z-index:6;font-size:20px;font-weight:700}
+#loading[hidden]{display:none}
+@media(max-width:600px){#hud{padding:13px;width:min(255px,70vw)}#hud h1{font-size:1.2rem}#hud p{font-size:11px}#rooms{max-height:130px;overflow:auto}#vr{right:10px;bottom:10px}}
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="loading">Preparing RecFlare XR…</div>
+<section id="hud" aria-label="RecFlare XR controls">
+<h1>REC<span>FLARE</span> XR</h1>
+<p>An original, free Quest Browser prototype. Browse your server's room names and explore simple demo spaces. No APK or Meta entitlement required.</p>
+<span id="status" role="status">Connecting to room directory…</span>
+<div id="rooms"></div>
+<button id="back" type="button">Return to plaza</button>
+<p id="help">Quest: press ENTER VR, use the left stick to walk, right stick to turn, and trigger to select portals. Desktop: WASD, arrow keys to turn, click a room.</p>
+</section>
+<div id="vr"></div>
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+const $ = (id) => document.getElementById(id);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x97c4ed);
+scene.fog = new THREE.Fog(0x97c4ed, 34, 98);
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, .07, 170);
+camera.position.set(0, 1.65, 0);
+const rig = new THREE.Group();
+rig.position.set(0, 0, 9);
+rig.add(camera);
+scene.add(rig);
+const renderer = new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));
+renderer.setSize(innerWidth,innerHeight);
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = false;
+document.body.appendChild(renderer.domElement);
+const vrButton = VRButton.createButton(renderer,{optionalFeatures:['local-floor']});
+$('vr').append(vrButton);
+renderer.xr.addEventListener('sessionstart',()=>{camera.position.y=0;$('hud').style.opacity='.3';$('hud').style.pointerEvents='none'});
+renderer.xr.addEventListener('sessionend',()=>{camera.position.y=1.65;$('hud').style.opacity='1';$('hud').style.pointerEvents='auto'});
+scene.add(new THREE.HemisphereLight(0xffffff,0x768ba4,2.25));
+const sunlight=new THREE.DirectionalLight(0xfff5de,2.1);sunlight.position.set(-9,16,8);scene.add(sunlight);
+const mat = (color,metalness=0) => new THREE.MeshStandardMaterial({color,roughness:.78,metalness});
+const orange=mat(0xff7244),white=mat(0xf3f7fe),blue=mat(0x2c5a87),dark=mat(0x233953);
+function box(parent,w,h,d,x,y,z,m){const obj=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);obj.position.set(x,y,z);parent.add(obj);return obj}
+function ball(parent,r,x,y,z,m){const o=new THREE.Mesh(new THREE.SphereGeometry(r,14,10),m);o.position.set(x,y,z);parent.add(o);return o}
+function sign(text,{width=4,height=.7,font=54,bg='#18314c',fg='#ffffff'}={}){
+ const canvas=document.createElement('canvas');canvas.width=1024;canvas.height=256;const g=canvas.getContext('2d');
+ g.fillStyle=bg;g.fillRect(0,0,1024,256);g.fillStyle=fg;g.font='bold '+font+'px system-ui,sans-serif';g.textAlign='center';g.textBaseline='middle';
+ const str=String(text||'').slice(0,50);let size=font;while(g.measureText(str).width>940&&size>23){size-=3;g.font='bold '+size+'px system-ui,sans-serif'}
+ g.fillText(str,512,128);
+ const t=new THREE.CanvasTexture(canvas);t.colorSpace=THREE.SRGBColorSpace;
+ const mesh=new THREE.Mesh(new THREE.PlaneGeometry(width,height),new THREE.MeshBasicMaterial({map:t,transparent:false,side:THREE.DoubleSide}));
+ return mesh;
+}
+function floor(parent,w,d,z,color=0xdde8f4){const f=new THREE.Mesh(new THREE.PlaneGeometry(w,d),mat(color));f.rotation.x=-Math.PI/2;f.position.z=z;f.position.y=-.025;parent.add(f);return f}
+const plaza=new THREE.Group();scene.add(plaza);
+floor(plaza,70,65,-6);
+for(let j=-3;j<=3;j++){box(plaza,.09,.05,60,j*5,0,-6,mat(0xb9cde0));}
+for(let j=0;j<8;j++){box(plaza,.3,2,.3,-18+(j*5.5),1,-20,white);ball(plaza,.45,-18+j*5.5,2.5,-20,orange)}
+box(plaza,24,1.2,1,0,4,-12,dark);
+const title=sign('RECFLARE XR • ROOM PLAZA',{width:18,height:1.4,font:60,bg:'#ff7244'});title.position.set(0,4,-11.44);plaza.add(title);
+const subtitle=sign('ORIGINAL PROTOTYPE  •  NOT THE 2026 GAME',{width:12,height:.5,font:40,bg:'#385f85'});subtitle.position.set(0,2.9,-11.44);plaza.add(subtitle);
+const portalRoot=new THREE.Group();plaza.add(portalRoot);
+let rooms=[],portals=[],preview=null;
+const ray=new THREE.Raycaster();
+function clearGroup(group){for(const child of [...group.children]){group.remove(child);child.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){const arr=Array.isArray(o.material)?o.material:[o.material];for(const m of arr){if(m.map)m.map.dispose();m.dispose();}}})}}
+function makePortal(room,index){
+ const x=(index%3-1)*6.4,z=-3-Math.floor(index/3)*6.5;
+ const g=new THREE.Group();g.position.set(x,0,z);portalRoot.add(g);
+ box(g,4.4,3.9,.28,0,2,0,dark);
+ box(g,4.05,3.45,.34,0,2,.23,mat(index%2?0x3978ab:0x427aa6));
+ box(g,3.9,2.6,.36,0,2.12,.42,mat(0x629dc5));
+ box(g,4.35,.26,.5,0,4.02,.35,orange);
+ const label=sign(room.Name||'Untitled room',{width:3.9,height:.75,font:58,bg:'#122b43'});
+ label.position.set(0,3.4,.48);g.add(label);
+ const small=sign('TRIGGER TO PREVIEW',{width:3.3,height:.42,font:39,bg:'#ff7244'});
+ small.position.set(0,.95,.48);g.add(small);
+ const target=box(g,4.2,3.25,.1,0,2,.63,new THREE.MeshBasicMaterial({visible:false}));
+ target.userData.roomIndex=index;
+ portals.push(target);
+}
+function loadPortals(data){
+ rooms=data.slice(0,6);clearGroup(portalRoot);portals=[];
+ rooms.forEach(makePortal);
+ const list=$('rooms');list.replaceChildren();
+ rooms.forEach((room,i)=>{const b=document.createElement('button');b.type='button';b.textContent=(room.Name||'Room')+' • Preview';b.onclick=()=>enterRoom(i);list.append(b)});
+}
+const previewGroup=new THREE.Group();scene.add(previewGroup);
+function enterRoom(i){
+ const room=rooms[i];if(!room)return;
+ preview=room;clearGroup(previewGroup);
+ const id=Number(room.RoomId||i),palette=[0xbdd8ea,0xeccaa8,0xd3d5f7,0xb5e5d5,0xefc4df,0xf4e4b6];
+ floor(previewGroup,32,31,-54,palette[Math.abs(id)%palette.length]);
+ box(previewGroup,32,6,.4,0,3,-69,dark);box(previewGroup,.4,6,31,-16,3,-54,dark);box(previewGroup,.4,6,31,16,3,-54,dark);
+ const top=sign('ROOM PREVIEW: '+(room.Name||'Room'),{width:14,height:1.3,font:56,bg:'#ff7244'});
+ top.position.set(0,4.5,-67.7);previewGroup.add(top);
+ const note=sign('SAMPLE WORLD • ACTUAL ROOM ASSETS ARE NOT LOADED',{width:13,height:.7,font:40,bg:'#274968'});
+ note.position.set(0,3.25,-67.7);previewGroup.add(note);
+ for(let j=0;j<11;j++){
+  const t=j*2.399,rad=4+(j%4)*2.4,x=Math.cos(t)*rad,z=-55+Math.sin(t)*rad;
+  box(previewGroup,1.1+(j%3),1.5+(j%4),1.1+(j%3),x,.8+(j%4)*.45,z,mat([0xf9874c,0x86bddd,0x6c89c3,0x8dc5a2][j%4]));
+ }
+ box(previewGroup,5,2,.5,0,1.3,-43.5,orange);
+ const backSign=sign('RETURN TO PLAZA',{width:4.7,height:.85,font:60,bg:'#fa633c'});backSign.position.set(0,1.65,-43.17);previewGroup.add(backSign);
+ const target=box(previewGroup,5,2,.2,0,1.3,-43.0,new THREE.MeshBasicMaterial({visible:false}));target.userData.goBack=true;
+ rig.position.set(0,0,-47);
+ $('status').textContent='Preview: '+(room.Name||'room')+'. This is a demo world, not the original game content.';
+ $('back').hidden=false;
+}
+function back(){preview=null;rig.position.set(0,0,9);$('status').textContent='Room plaza • Choose a portal to preview a demo scene.'}
+$('back').onclick=back;
+
+const controllers=[];
+for(let i=0;i<2;i++){
+ const c=renderer.xr.getController(i);
+ const beam=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3(0,0,-5)]),new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:.6}));c.add(beam);
+ c.addEventListener('selectstart',()=>choose(c));
+ rig.add(c);controllers.push(c);
+}
+function choose(controller){
+ ray.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+ const q=new THREE.Quaternion();controller.getWorldQuaternion(q);
+ ray.ray.direction.set(0,0,-1).applyQuaternion(q).normalize();
+ const hits=ray.intersectObjects(preview?previewGroup.children:portals,true);
+ for(const hit of hits){
+  let o=hit.object;
+  while(o){
+   if(o.userData.goBack){back();return}
+   if(Number.isInteger(o.userData.roomIndex)){enterRoom(o.userData.roomIndex);return}
+   o=o.parent;
+  }
+ }
+}
+let mouseDown=false;renderer.domElement.addEventListener('pointerup',(e)=>{if(e.pointerType==='touch'||e.pointerType==='mouse'){
+ const rect=renderer.domElement.getBoundingClientRect();
+ const x=(e.clientX-rect.left)/rect.width*2-1,y=-(e.clientY-rect.top)/rect.height*2+1;
+ ray.setFromCamera({x,y},camera);
+ const hits=ray.intersectObjects(preview?previewGroup.children:portals,true);
+ for(const hit of hits){let o=hit.object;while(o){if(o.userData.goBack){back();return}if(Number.isInteger(o.userData.roomIndex)){enterRoom(o.userData.roomIndex);return}o=o.parent}}
+}});
+const keys=new Set();addEventListener('keydown',e=>{keys.add(e.code);if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault()});addEventListener('keyup',e=>keys.delete(e.code));
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+const clock=new THREE.Clock();let turnCooldown=0;
+function thumb(gamepad){const a=gamepad?.axes||[];if(a.length>=4)return[a[2],a[3]];return[a[0]||0,a[1]||0]}
+function update(dt){
+ let forward=Number(keys.has('KeyW')||keys.has('ArrowUp'))-Number(keys.has('KeyS')||keys.has('ArrowDown'));
+ let side=Number(keys.has('KeyD'))-Number(keys.has('KeyA'));
+ let turn=(Number(keys.has('ArrowRight'))-Number(keys.has('ArrowLeft')))*1.3;
+ if(renderer.xr.isPresenting){
+  const sources=renderer.xr.getSession()?.inputSources||[];
+  for(const s of sources){if(!s.gamepad)continue;const[a,b]=thumb(s.gamepad);if(s.handedness==='left'){side+=Math.abs(a)>.16?a:0;forward-=Math.abs(b)>.16?b:0}else if(s.handedness==='right'){turn+=Math.abs(a)>.2?a*1.4:0}}
+ }
+ const walk=5.3*dt;const v=new THREE.Vector3(side,0,-forward);
+ if(v.lengthSq()>1)v.normalize();
+ v.applyAxisAngle(new THREE.Vector3(0,1,0),rig.rotation.y);
+ rig.position.addScaledVector(v,walk);
+ rig.rotation.y-=turn*dt;
+ rig.position.x=THREE.MathUtils.clamp(rig.position.x,-13,13);
+ rig.position.z=preview?THREE.MathUtils.clamp(rig.position.z,-67,-43):THREE.MathUtils.clamp(rig.position.z,-18,16);
+}
+renderer.setAnimationLoop(()=>{update(Math.min(clock.getDelta(),.05));renderer.render(scene,camera)});
+$('loading').hidden=true;
+async function loadRooms(){
+ try{
+  const configRes=await fetch('/api/config',{cache:'no-store'});if(!configRes.ok)throw Error('Website config not available');
+  const config=await configRes.json();
+  const host=(config.hosts?.rooms||config.hosts?.Rooms||'https://rooms.mrbrorr11.workers.dev').replace(/\/$/,'');
+  const res=await fetch(host+'/rooms/recommendations?skip=0&take=6',{cache:'no-store'});
+  if(!res.ok)throw Error('Rooms service HTTP '+res.status);
+  const data=await res.json();if(!Array.isArray(data))throw Error('Unexpected room list format');
+  const items=data.filter(o=>o&&typeof o.Name==='string').slice(0,6);
+  if(!items.length)throw Error('No rooms available');
+  loadPortals(items);
+  $('status').textContent='LIVE SERVER: '+items.length+' room names loaded. Pick a portal for an original demo scene.';
+ }catch(err){
+  loadPortals([{RoomId:1,Name:'Demo Sandbox'},{RoomId:2,Name:'Demo Art Studio'},{RoomId:3,Name:'Demo Park'},{RoomId:4,Name:'Demo Sports'},{RoomId:5,Name:'Demo Workshop'},{RoomId:6,Name:'Demo Social Plaza'}]);
+  $('status').textContent='Demo room names shown (server room feed unavailable: '+String(err.message).slice(0,85)+').';
+ }
+}
+loadRooms();
+</script>
+</body>
+</html>
