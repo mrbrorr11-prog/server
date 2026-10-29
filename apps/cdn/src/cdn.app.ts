@@ -552,7 +552,7 @@ app.get(
  * `mono` worker mounts this app with its own (superset) Env, which has no `ASSETS`
  * binding, and the wrapper below must stay mountable there.
  */
-type StudioAssetEnv = Pick<Env, 'DB' | 'CDN_ASSETS'>
+type StudioAssetEnv = Pick<Env, 'DB' | 'CDN_ASSETS' | 'RECFLARE_ROOM_BLOBS'>
 
 export default {
 	fetch(
