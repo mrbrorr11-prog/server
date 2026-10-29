@@ -12,6 +12,8 @@ export type Env = SharedHonoEnv & {
 	// uploads are written here under a per-FileType subfolder; the `cdn` worker
 	// serves them back.
 	CDN_ASSETS: R2Bucket
+	/** Shared Workers KV namespace for free room scene and metadata uploads. */
+	RECFLARE_ROOM_BLOBS: KVNamespace
 }
 
 /** Variables can be extended */

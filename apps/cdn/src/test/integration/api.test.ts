@@ -2,6 +2,8 @@ import { env } from 'cloudflare:test'
 import { exports } from 'cloudflare:workers'
 import { describe, expect, test } from 'vitest'
 
+import { putKvRoomBlob } from '@repo/hono-helpers'
+
 import '../../cdn.app'
 
 import type { Env } from '../../context'
@@ -36,6 +38,47 @@ test('serves opaque avatar source manifests and SDK avatar bundle GET/HEAD/range
 	})
 	expect(response.status).toBe(206)
 	expect(await response.text()).toBe('UnityFS\0')
+})
+
+test('room scenes saved in free KV reload with accurate byte ranges and ETags', async () => {
+	const key = 'room/2026-10-30/00000000-0000-0000-0000-000000000000'
+	const bytes = new TextEncoder().encode('saved maker pen objects and metadata')
+	const hash = await crypto.subtle.digest('SHA-256', bytes)
+	await putKvRoomBlob(env.RECFLARE_ROOM_BLOBS, key, bytes.buffer as ArrayBuffer, hash)
+	const url = ORIGIN + '/' + key
+	const full = await exports.default.fetch(url)
+	expect(full.status).toBe(200)
+	expect(await full.text()).toBe('saved maker pen objects and metadata')
+	expect(full.headers.get('content-type')).toBe('application/octet-stream')
+
+	const ranged = await exports.default.fetch(url, { headers: { Range: 'bytes=6-14' } })
+	expect(ranged.status).toBe(206)
+	expect(ranged.headers.get('content-range')).toBe(`bytes 6-14/${bytes.length}`)
+	expect(await ranged.text()).toBe('maker pen')
+
+	const suffix = await exports.default.fetch(url, { headers: { Range: 'bytes=-8' } })
+	expect(suffix.status).toBe(206)
+	expect(await suffix.text()).toBe('metadata')
+
+	const etag = full.headers.get('etag')!
+	const unchanged = await exports.default.fetch(url, { headers: { 'If-None-Match': etag } })
+	expect(unchanged.status).toBe(304)
+	const impossible = await exports.default.fetch(url, { headers: { Range: 'bytes=10000-' } })
+	expect(impossible.status).toBe(416)
+})
+
+test('free room data ranges can cross the boundary between KV chunks', async () => {
+	const key = 'room/2026-10-30/11111111-1111-1111-1111-111111111111'
+	const bytes = new Uint8Array(4 * 1024 * 1024 + 8)
+	const edge = 4 * 1024 * 1024 - 2
+	bytes.set([10, 20, 30, 40, 50], edge)
+	const hash = await crypto.subtle.digest('SHA-256', bytes)
+	await putKvRoomBlob(env.RECFLARE_ROOM_BLOBS, key, bytes.buffer, hash)
+	const response = await exports.default.fetch(ORIGIN + '/' + key, {
+		headers: { Range: `bytes=${edge}-${edge + 4}` },
+	})
+	expect(response.status).toBe(206)
+	expect(Array.from(new Uint8Array(await response.arrayBuffer()))).toEqual([10, 20, 30, 40, 50])
 })
 
 describe('cdn endpoints', () => {

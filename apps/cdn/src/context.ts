@@ -14,6 +14,8 @@ export type Env = SharedHonoEnv & {
 	// R2 bucket holding CDN binaries: signature blobs under `sigs/<name>` and
 	// room build data under `room/<name>`.
 	CDN_ASSETS: R2Bucket
+	/** Same KV namespace as storage, used to download saved room scenes without R2. */
+	RECFLARE_ROOM_BLOBS: KVNamespace
 	// Static-asset fetcher for the JSON configs in `static/config/` (see wrangler.jsonc
 	// `assets`). Fetched by filename so `/config/:name` serves whatever is published;
 	// the binding is the only way in, since `run_worker_first` keeps the runtime from
