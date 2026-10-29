@@ -1546,10 +1546,12 @@ function PlayerPage({
 	username,
 	config,
 	navigate,
+	viewer,
 }: {
 	username: string
 	config: SiteConfig | undefined
 	navigate: Navigate
+	viewer: SelfAccount | null | undefined
 }) {
 	const [account, setAccount] = useState<PublicAccount | null | undefined>(undefined)
 	const [rooms, setRooms] = useState<PublicRoom[] | null>(null)
@@ -1622,6 +1624,11 @@ function PlayerPage({
 					/>
 					<div>
 						<h1>{account.displayName || account.username}</h1>
+						{viewer?.accountId === account.accountId && (
+							<Link to="/account" navigate={navigate} className="edit-profile-link">
+								Edit profile
+							</Link>
+						)}
 						<p className="handle">
 							@{account.username}
 							{!Number.isNaN(created.getTime()) && ` · joined ${created.toLocaleDateString()}`}
@@ -2593,7 +2600,7 @@ export function App() {
 				// ImagePage); a client-side route, so a cold load falls through to the SPA shell.
 				<ImagePage imageId={imageId} config={config} />
 			) : lookupUsername !== null ? (
-				<PlayerPage username={lookupUsername} config={config} navigate={navigate} />
+				<PlayerPage username={lookupUsername} config={config} navigate={navigate} viewer={account} />
 			) : roomId !== null ? (
 				<RoomPage account={account} config={config} roomId={roomId} navigate={navigate} />
 			) : (
@@ -4634,8 +4641,23 @@ function Dashboard({
 	// The dashboard sections, shown one at a time via the left tab rail. Admin-only
 	// sections are appended when the session carries an admin role.
 	const sections = [
-		// First, so a player who just signed in lands on what they made rather than on a
-		// settings form they opened the page to avoid.
+		// Edit profile is first so it loads without waiting for the rooms service.
+		// Keep the existing separate settings tabs for people who already use them.
+		{
+			id: 'profile',
+			label: 'Edit profile',
+			render: () => (
+				<>
+					<section className="card">
+						<h2>Edit your profile</h2>
+						<p className="muted">Tap your profile picture above to change it. Update your banner, display name and username below.</p>
+					</section>
+					<BannerUpload account={account} onChange={onChange} />
+					<DisplayNameForm account={account} onChange={onChange} />
+					<UsernameForm account={account} onChange={onChange} />
+				</>
+			),
+		},
 		{ id: 'rooms', label: 'My rooms', render: () => <MyRooms navigate={navigate} /> },
 		{ id: 'photos', label: 'My photos', render: () => <MyPhotos accountId={account.accountId} /> },
 		{
