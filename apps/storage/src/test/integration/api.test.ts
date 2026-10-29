@@ -101,11 +101,13 @@ it('POST /upload stores a RoomMetadata (FileType 6) file under room/ and returns
 		/^\d{4}-\d{2}-\d{2}\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 	)
 
-	// The bytes are persisted in the shared CDN bucket under `room/`, the same folder as a
-	// scene blob: the client downloads the room's `DataBlob` from the cdn's `/room/<name>`.
-	const stored = await env.CDN_ASSETS.get(`room/${filename}`)
+	// The free room backend writes a manifest only after all KV chunks exist.
+	const prefix = `recflare-room:room/${filename}`
+	const manifest = await env.RECFLARE_ROOM_BLOBS.get(prefix + ':manifest', 'json')
+	expect(manifest).toMatchObject({ version: 1, length: bytes.length, parts: 1 })
+	const stored = await env.RECFLARE_ROOM_BLOBS.get(prefix + ':part:0', 'arrayBuffer')
 	expect(stored).not.toBeNull()
-	expect(new Uint8Array(await stored!.arrayBuffer())).toEqual(bytes)
+	expect(new Uint8Array(stored!)).toEqual(bytes)
 })
 
 it('POST /upload folders each FileType under its own subfolder', async () => {
@@ -125,7 +127,13 @@ it('POST /upload folders each FileType under its own subfolder', async () => {
 		})
 		expect(res.status).toBe(200)
 		const { filename } = (await res.json()) as { filename: string }
-		expect(await env.CDN_ASSETS.get(`${subfolder}/${filename}`)).not.toBeNull()
+		if (subfolder === 'room') {
+			expect(
+				await env.RECFLARE_ROOM_BLOBS.get(`recflare-room:room/${filename}:manifest`)
+			).not.toBeNull()
+		} else {
+			expect(await env.CDN_ASSETS.get(`${subfolder}/${filename}`)).not.toBeNull()
+		}
 	}
 })
 
