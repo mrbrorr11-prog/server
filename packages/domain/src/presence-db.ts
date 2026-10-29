@@ -47,6 +47,11 @@ export const GAME_VERSION = '20230414'
  */
 export function gameBuild(version: string | null | undefined): string | null {
 	const build = version?.split('.')[0] ?? ''
+	// The 2026-03-23 Quest APK uses Android versionName 2026032301, while the
+	// game protocol identifies the same dated build as 20260323 (e.g. 20260323.14).
+	// Accept this exact packaging alias for compatibility testing, without treating
+	// arbitrary unknown date suffixes as supported builds.
+	if (build === '2026032301') return '20260323'
 	return build === '' ? null : build
 }
 
