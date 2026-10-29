@@ -147,6 +147,8 @@ interface CallOptions {
 	multipart?: FormData
 	/** Send the session token. */
 	authed?: boolean
+	/** Stop a stuck worker call so account settings can show a useful error. */
+	timeoutMs?: number
 	/**
 	 * What to say when the worker refuses with a 400 and NO body. Several accounts routes
 	 * do exactly that (email, display name, bio), so without this the player reads
@@ -178,6 +180,7 @@ export async function call<T = Record<string, unknown>>(
 		method: opts.method ?? (body === undefined ? 'GET' : 'POST'),
 		headers,
 		body,
+		...(opts.timeoutMs ? { signal: AbortSignal.timeout(opts.timeoutMs) } : {}),
 	})
 	const data = (await res.json().catch(() => ({}))) as Record<string, unknown>
 
