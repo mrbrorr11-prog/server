@@ -4930,13 +4930,13 @@ function RecRoomImport({ navigate }: { navigate: Navigate }) {
 							}
 							const name = roomNameFromRecNetLink(link)
 							if (!name) {
-								setRoomLinkError('Use a link like https://rec.net/room/MyRoom.')
+								setRoomLinkError('Use a room link from rec.net or recroom.network, such as https://recroom.network/room/IgnitedBonnie.')
 								return
 							}
 							setRoomLinkError('')
 							setSourceRoomName(`^${name}`)
 						}}
-						placeholder="https://rec.net/room/MyRoom"
+						placeholder="https://recroom.network/room/IgnitedBonnie"
 						autoCapitalize="off"
 						autoCorrect="off"
 						spellCheck={false}
@@ -4944,7 +4944,7 @@ function RecRoomImport({ navigate }: { navigate: Navigate }) {
 						disabled={pending || created !== null}
 					/>
 					<span className="hint">
-						The link fills in the room name. It cannot download the room scene;
+						Links from rec.net and recroom.network fill in the room name but cannot download its scene;
 						you must also provide an authorized .room or .binpb file below.
 					</span>
 				</label>
