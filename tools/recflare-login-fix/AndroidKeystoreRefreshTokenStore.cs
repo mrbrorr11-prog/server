@@ -19,8 +19,10 @@ namespace RecFlare.ClientAuth
         public string Read()
         {
             EnsureAndroid();
+            using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
             using (var cls = new AndroidJavaClass("com.recflare.auth.SecureTokenStore"))
-                return cls.CallStatic<string>("read");
+                return cls.CallStatic<string>("read", activity);
         }
 
         public void Write(string token)
@@ -28,15 +30,19 @@ namespace RecFlare.ClientAuth
             EnsureAndroid();
             if (string.IsNullOrEmpty(token))
                 throw new ArgumentException("Missing refresh token", nameof(token));
+            using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
             using (var cls = new AndroidJavaClass("com.recflare.auth.SecureTokenStore"))
-                cls.CallStatic("write", token);
+                cls.CallStatic("write", activity, token);
         }
 
         public void Delete()
         {
             EnsureAndroid();
+            using (var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            using (var activity = player.GetStatic<AndroidJavaObject>("currentActivity"))
             using (var cls = new AndroidJavaClass("com.recflare.auth.SecureTokenStore"))
-                cls.CallStatic("delete");
+                cls.CallStatic("delete", activity);
         }
     }
 }
