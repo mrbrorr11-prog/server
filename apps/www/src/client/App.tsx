@@ -4790,6 +4790,7 @@ function Dashboard({
 		// Narrower than the two above: the drop mints tokens, and www's route is developer-only.
 		...(isDeveloper()
 			? [
+					{ id: 'recroom-import', label: 'Import Rec Room', render: () => <RecRoomImport navigate={navigate} /> },
 					{
 						id: 'tokens',
 						label: 'Token drop',
@@ -4839,6 +4840,164 @@ function Dashboard({
 				<div className="panel">{current.render()}</div>
 			</div>
 		</>
+	)
+}
+
+/**
+ * Archive-based room import for developers. The original Rec Room servers are offline,
+ * so a room name is not a source of playable data. A local, authorized scene file is
+ * required. Import creates a PRIVATE room before the upload; failed uploads may be
+ * retried without creating duplicate rooms.
+ */
+function RecRoomImport({ navigate }: { navigate: Navigate }) {
+	const [sourceRoomName, setSourceRoomName] = useState('')
+	const [description, setDescription] = useState('')
+	const [file, setFile] = useState<File | null>(null)
+	const [downgrade, setDowngrade] = useState(false)
+	const [publish, setPublish] = useState(true)
+	const [permissionConfirmed, setPermissionConfirmed] = useState(false)
+	const [created, setCreated] = useState<{ roomId: number; subRoomId: number } | null>(null)
+	const [finished, setFinished] = useState(false)
+	const [fileError, setFileError] = useState('')
+	const { pending, error, done, run } = useAction()
+
+	return (
+		<section className="card">
+			<h2>Import a Rec Room room <span className="badge beta">Developer</span></h2>
+			<p className="muted">
+				Enter the original room name and select its exported scene data. Rec Room's
+				original servers are offline, so a room name alone cannot retrieve or recreate
+				the original room. This imports a scene you already have permission to use,
+				not a live download from Rec Room.
+			</p>
+			<p className="muted">
+				If you have an official room export ZIP, extract it first. This importer currently
+				accepts .room or .binpb scene files; other export formats and Rec Room Studio
+				assets cannot be converted automatically. The imported room starts private.
+			</p>
+			<form
+				className="blob-upload"
+				onSubmit={(event) => {
+					event.preventDefault()
+					if (!file || !permissionConfirmed || finished || pending) return
+					void run(async () => {
+						if (!isRoomBlobFile(file.name)) throw new Error('Choose a .room or .binpb scene file.')
+						const roomName = sourceRoomName.trim().replace(/^\^/, '')
+						if (!roomName) throw new Error('Enter the original room name.')
+						// Convert before creating a room: bad files should not leave empty shells.
+						const blob = await prepareRoomBlob(file, downgrade)
+						let destination = created
+						if (!destination) {
+							destination = await call<{ roomId: number; subRoomId: number }>(
+								'/api/staff/rooms/import-archive',
+								{
+									method: 'POST',
+									authed: true,
+									json: { sourceRoomName: roomName, description: description.trim(), permissionConfirmed },
+								}
+							)
+							setCreated(destination)
+						}
+						const [filename, hash] = await Promise.all([uploadRoomBlob(blob), blobHash(blob)])
+						await saveSubRoomBlob(destination.roomId, destination.subRoomId, {
+							filename,
+							hash,
+							description: 'Imported from authorized Rec Room scene export',
+							autoPublish: publish,
+						})
+						setFinished(true)
+						return publish
+							? 'Scene uploaded and published. Your imported room remains private until you change its visibility.'
+							: 'Scene uploaded as a staged save. Publish it when ready.'
+					})
+				}}
+			>
+				<label className="blob-upload-note">
+					Original Rec Room room name
+					<input
+						type="text"
+						value={sourceRoomName}
+						onChange={(event) => setSourceRoomName(event.target.value)}
+						placeholder="^MyRoom"
+						maxLength={81}
+						disabled={pending || created !== null}
+						required
+					/>
+				</label>
+				<label className="blob-upload-note">
+					Room description <span className="optional">optional</span>
+					<input
+						type="text"
+						value={description}
+						onChange={(event) => setDescription(event.target.value)}
+						placeholder="Original room description"
+						maxLength={1000}
+						disabled={pending || created !== null}
+					/>
+				</label>
+				<label className="blob-upload-file">
+					Authorized scene file (.room or .binpb)
+					<input
+						type="file"
+						accept={ROOM_BLOB_EXTENSIONS.join(',')}
+						disabled={pending || finished}
+						required
+						onChange={(event) => {
+							const picked = event.target.files?.[0] ?? null
+							if (picked && !isRoomBlobFile(picked.name)) {
+								setFile(null)
+								setFileError('Extract the export and choose a .room or .binpb file.')
+								event.target.value = ''
+								return
+							}
+							setFileError('')
+							setFile(picked)
+							setDowngrade(picked !== null && needsDowngrade(picked.name))
+						}}
+					/>
+				</label>
+				{fileError && <p className="error">{fileError}</p>}
+				<label className="check">
+					<input
+						type="checkbox"
+						checked={downgrade}
+						disabled={!file || pending || finished}
+						onChange={(event) => setDowngrade(event.target.checked)}
+					/>
+					Convert newer scene for this build (removes unsupported circuits)
+				</label>
+				<label className="check">
+					<input
+						type="checkbox"
+						checked={publish}
+						disabled={pending || finished}
+						onChange={(event) => setPublish(event.target.checked)}
+					/>
+					Publish scene to the private room after upload
+				</label>
+				<label className="check">
+					<input
+						type="checkbox"
+						checked={permissionConfirmed}
+						disabled={pending || finished}
+						required
+						onChange={(event) => setPermissionConfirmed(event.target.checked)}
+					/>
+					I created this room or have permission to copy its content.
+				</label>
+				{created && (
+					<p className="muted">
+						Private destination created: <Link to={`/rooms/${created.roomId}`} navigate={navigate}>room #{created.roomId}</Link>.
+						{!finished && ' If upload fails, retry here without creating another room.'}
+					</p>
+				)}
+				{error && <p className="error">{error}</p>}
+				{done && <p className="ok">{done}</p>}
+				<button type="submit" disabled={pending || finished || !file || !permissionConfirmed || !sourceRoomName.trim()}>
+					{pending ? 'Importing…' : finished ? 'Imported' : created ? 'Retry scene upload' : 'Import room'}
+				</button>
+			</form>
+		</section>
 	)
 }
 
