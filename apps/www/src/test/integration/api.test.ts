@@ -2928,6 +2928,48 @@ it('refuses an XP gift that is not a positive whole number, too large, or to nob
 	expect(await auditRows('gift_xp', 8351)).toEqual([])
 })
 
+// Exact-level edits are NOT XP gifts: a developer picks a level directly, including
+// down-levels, and the shared game-facing progression table immediately reflects it.
+it('lets only developers read and set a player\'s exact level', async () => {
+	const playerId = 88991
+	await updateAccount(env.DB, playerId, { username: 'LevelTarget' })
+	const path = `/api/staff/players/${playerId}/level`
+	const noToken = await SELF.fetch('http://localhost' + path)
+	expect(noToken.status).toBe(401)
+	expect((await staffGet(path, 8110, ['moderator'])).status).toBe(403)
+	expect((await staffPost(path, 8110, { level: 15 }, ['moderator'])).status).toBe(403)
+
+	const before = await staffGet(path, 8110, ['developer'])
+	expect(before.status).toBe(200)
+	expect(await before.json()).toEqual({ playerId, level: 1, xp: 0, maxLevel: 50 })
+
+	const updated = await devPost(path, 8110, { level: 50 })
+	expect(updated.status).toBe(200)
+	expect(await updated.json()).toEqual({ playerId, previousLevel: 1, level: 50, xp: 0 })
+	await expect(getProgression(env.DB, playerId)).resolves.toEqual({ PlayerId: playerId, Level: 50, XP: 0 })
+
+	// Lowering a level is supported; current-level XP resets to zero.
+	const lowered = await devPost(path, 8110, { level: 7 })
+	expect(lowered.status).toBe(200)
+	await expect(getProgression(env.DB, playerId)).resolves.toEqual({ PlayerId: playerId, Level: 7, XP: 0 })
+	expect(await auditRows('set_player_level', playerId)).toEqual([
+		{ actor: 8110, data: { playerId, previousLevel: 1, previousXp: 0, level: 50, xp: 0 } },
+		{ actor: 8110, data: { playerId, previousLevel: 50, previousXp: 0, level: 7, xp: 0 } },
+	])
+})
+
+it('rejects invalid levels and unknown player ids without creating progression', async () => {
+	const playerId = 88992
+	await updateAccount(env.DB, playerId, { username: 'LevelGuard' })
+	for (const level of [0, -3, 51, 1.5, '45', null, 1_000_000]) {
+		expect((await devPost(`/api/staff/players/${playerId}/level`, 8110, { level })).status).toBe(400)
+	}
+	expect((await devPost('/api/staff/players/99889992/level', 8110, { level: 2 })).status).toBe(404)
+	expect((await staffGet('/api/staff/players/99889992/level', 8110, ['developer'])).status).toBe(404)
+	await expect(getProgression(env.DB, playerId)).resolves.toEqual({ PlayerId: playerId, Level: 1, XP: 0 })
+	expect(await auditRows('set_player_level', playerId)).toEqual([])
+})
+
 // ---- Discord role sweep ------------------------------------------------------
 
 // The daily cron behind `platform_account.role`: with a bot token configured it re-reads
