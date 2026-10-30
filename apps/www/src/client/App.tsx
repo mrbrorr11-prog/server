@@ -29,6 +29,7 @@ import {
 	where,
 } from './api'
 import { DeviceLinkPage } from './DeviceLink'
+import { DeveloperLevelsPage } from './DeveloperLevels'
 import { customAvatarItemIdFromPath, inventionIdFromPath, InventionPage, ItemPage } from './Item'
 import { ModerationPage, PlayerBanStatus } from './Moderation'
 import { roomNameFromRecNetLink } from './room-link'
@@ -2640,6 +2641,8 @@ export function App() {
 				// on any of them falls through to the SPA shell; the page then gates itself on
 				// the token's role, and every endpoint behind it re-checks.
 				<ModerationPage account={account} path={path} search={search} navigate={navigate} />
+			) : path === '/developer/levels' || path === '/developer/levels/' ? (
+				<DeveloperLevelsPage signedIn={account === undefined ? undefined : account !== null} />
 			) : path === '/settings/recroomstudio' || path === '/settings/recroomstudio/' ? (
 				// The URL Studio already opens from the "not authorized to upload" dialog.
 				// A client-side route like /moderation: not in run_worker_first, so a cold
@@ -2750,6 +2753,15 @@ function NavBar({
 								}
 							>
 								Moderation
+							</Link>
+						)}
+						{isDeveloper() && (
+							<Link
+								to="/developer/levels"
+								navigate={navigate}
+								className={path.startsWith('/developer/levels') ? 'active' : ''}
+							>
+								Player levels
 							</Link>
 						)}
 						{isAdmin() && (
