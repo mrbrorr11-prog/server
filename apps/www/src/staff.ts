@@ -73,6 +73,7 @@ import { grantCustomAvatarItem, ownedCustomAvatarItemIds } from '../../econ/src/
 import { NotificationType } from '../../notify/src/notification-types'
 // The sweep itself, so a developer can run it on demand instead of waiting for the cron.
 import { refreshDiscordRoles } from './discord-roles'
+import { fetchPublicRoomDescription } from './room-archive'
 
 import type { Context, MiddlewareHandler } from 'hono'
 import type { GiftContent } from '@repo/domain'
@@ -1754,6 +1755,21 @@ export async function createArchiveImportRoomHandler(c: Context<App>) {
 	if (description.length > 1000) {
 		return c.json({ error: 'The description must be 1000 characters or fewer.' }, 400)
 	}
+	// Link-only imports create a *listing*, never a playable scene. Verify the
+	// public source before writing anything: the link may lead to a missing room.
+	const metadataOnly = body.metadataOnly === true
+	let publicDescription = ''
+	if (metadataOnly) {
+		const sourceLink = typeof body.sourceRoomLink === 'string' ? body.sourceRoomLink.trim() : ''
+		if (sourceLink.length > 500 || sourceLink === '') {
+			return c.json({ error: 'Paste a room link to import public details.' }, 400)
+		}
+		try {
+			publicDescription = await fetchPublicRoomDescription(sourceLink, name)
+		} catch (err) {
+			return c.json({ error: err instanceof Error ? err.message : 'Could not verify the source room.' }, 422)
+		}
+	}
 	const playerId = staffId(c)
 	// Match the ordinary room-creation cap instead of giving the import panel a bypass.
 	const maxRooms = intVar(c.env.MAX_ROOMS_PER_ACCOUNT, 10)
@@ -1778,11 +1794,15 @@ export async function createArchiveImportRoomHandler(c: Context<App>) {
 		return c.json({ error: 'Room created but its Home subroom could not be found.', roomId }, 500)
 	}
 
-	if (description) await setRoomDescription(c.env.DB, roomId, description)
+	const importedDescription = metadataOnly
+		? `[Public room details only; no playable scene imported] ${publicDescription || description}`.slice(0, 1000)
+		: description
+	if (importedDescription) await setRoomDescription(c.env.DB, roomId, importedDescription)
 	await recordPlayerAudit(c, 'import_recroom_archive', {
 		sourceRoomName: rawName,
 		roomId,
-		// The imported scene is uploaded by the browser, not stored in this audit entry.
+		metadataOnly,
+		// The scene is supplied separately by the browser, never fetched from a room page.
 	})
-	return c.json({ roomId, subRoomId, roomName: name, private: true }, 201)
+	return c.json({ roomId, subRoomId, roomName: name, private: true, metadataOnly }, 201)
 }
