@@ -31,6 +31,7 @@ import {
 import { DeviceLinkPage } from './DeviceLink'
 import { customAvatarItemIdFromPath, inventionIdFromPath, InventionPage, ItemPage } from './Item'
 import { ModerationPage, PlayerBanStatus } from './Moderation'
+import { roomNameFromRecNetLink } from './room-link'
 import { PumpleBossFight } from './PumpleBossFight'
 import { StatsPage } from './Stats'
 import { StudioAccessPage } from './StudioAccess'
@@ -4850,6 +4851,8 @@ function Dashboard({
  * retried without creating duplicate rooms.
  */
 function RecRoomImport({ navigate }: { navigate: Navigate }) {
+	const [sourceRoomLink, setSourceRoomLink] = useState('')
+	const [roomLinkError, setRoomLinkError] = useState('')
 	const [sourceRoomName, setSourceRoomName] = useState('')
 	const [description, setDescription] = useState('')
 	const [file, setFile] = useState<File | null>(null)
@@ -4865,7 +4868,8 @@ function RecRoomImport({ navigate }: { navigate: Navigate }) {
 		<section className="card">
 			<h2>Import a Rec Room room <span className="badge beta">Developer</span></h2>
 			<p className="muted">
-				Enter the original room name and select its exported scene data. Rec Room's
+				Paste a Rec Room room link or enter its original name, then select the exported
+				scene data. Rec Room's
 				original servers are offline, so a room name alone cannot retrieve or recreate
 				the original room. This imports a scene you already have permission to use,
 				not a live download from Rec Room.
@@ -4879,7 +4883,7 @@ function RecRoomImport({ navigate }: { navigate: Navigate }) {
 				className="blob-upload"
 				onSubmit={(event) => {
 					event.preventDefault()
-					if (!file || !permissionConfirmed || finished || pending) return
+					if (!file || !permissionConfirmed || finished || pending || roomLinkError) return
 					void run(async () => {
 						if (!isRoomBlobFile(file.name)) throw new Error('Choose a .room or .binpb scene file.')
 						const roomName = sourceRoomName.trim().replace(/^\^/, '')
@@ -4912,6 +4916,39 @@ function RecRoomImport({ navigate }: { navigate: Navigate }) {
 					})
 				}}
 			>
+				<label className="blob-upload-note">
+					Paste Rec Room room link <span className="optional">optional</span>
+					<input
+						type="text"
+						value={sourceRoomLink}
+						onChange={(event) => {
+							const link = event.target.value
+							setSourceRoomLink(link)
+							if (!link.trim()) {
+								setRoomLinkError('')
+								return
+							}
+							const name = roomNameFromRecNetLink(link)
+							if (!name) {
+								setRoomLinkError('Use a link like https://rec.net/room/MyRoom.')
+								return
+							}
+							setRoomLinkError('')
+							setSourceRoomName(`^${name}`)
+						}}
+						placeholder="https://rec.net/room/MyRoom"
+						autoCapitalize="off"
+						autoCorrect="off"
+						spellCheck={false}
+						maxLength={500}
+						disabled={pending || created !== null}
+					/>
+					<span className="hint">
+						The link fills in the room name. It cannot download the room scene;
+						you must also provide an authorized .room or .binpb file below.
+					</span>
+				</label>
+				{roomLinkError && <p className="error">{roomLinkError}</p>}
 				<label className="blob-upload-note">
 					Original Rec Room room name
 					<input
@@ -4993,7 +5030,7 @@ function RecRoomImport({ navigate }: { navigate: Navigate }) {
 				)}
 				{error && <p className="error">{error}</p>}
 				{done && <p className="ok">{done}</p>}
-				<button type="submit" disabled={pending || finished || !file || !permissionConfirmed || !sourceRoomName.trim()}>
+				<button type="submit" disabled={pending || finished || !file || !permissionConfirmed || !sourceRoomName.trim() || !!roomLinkError}>
 					{pending ? 'Importing…' : finished ? 'Imported' : created ? 'Retry scene upload' : 'Import room'}
 				</button>
 			</form>
