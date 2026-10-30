@@ -1,4 +1,6 @@
 import { adminSecretsStore, env, SELF } from 'cloudflare:test'
+import { getKvImage } from '@repo/hono-helpers'
+import app from '../../storage.app'
 import { beforeAll, expect, it } from 'vitest'
 
 import type { Env } from '../../context'
@@ -20,6 +22,23 @@ beforeAll(async () => {
 // Mint a token the way the `auth` worker does, signing with the shared test key seeded into the JWT_SECRET store, so the
 // storage worker's validation accepts it.
 const TEST_SECRET = 'test-signing-key'
+
+it('stores photos in free KV when R2 is disabled', async () => {
+	const form = new FormData()
+	form.set('FileType', '3')
+	form.set('image', new File([PNG_BYTES], 'photo.png', { type: 'image/png' }))
+	const noR2 = { ...env, CDN_ASSETS: undefined as unknown as R2Bucket }
+	const res = await app.fetch(
+		new Request(`${ORIGIN}/upload`, { method: 'POST', headers: await bearer(), body: form }),
+		noR2
+	)
+	expect(res.status).toBe(200)
+	const body = (await res.json()) as { filename: string }
+	expect(body.filename).toMatch(/^\\d{4}-\\d{2}-\\d{2}\\//)
+	const saved = await getKvImage(env.RECFLARE_ROOM_BLOBS, `image/${body.filename}`)
+	expect(saved?.contentType).toBe('image/png')
+	expect(new Uint8Array(saved!.bytes)).toEqual(PNG_BYTES)
+})
 
 it('stores avatar source and baked uploads with immutable account ownership metadata', async () => {
 	for (const [type, prefix] of [
