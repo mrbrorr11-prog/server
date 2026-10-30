@@ -31,6 +31,12 @@
 			"bucket_name": "recflare-cdn"
 		}
 	],
+	"kv_namespaces": [
+		{
+			"binding": "RECFLARE_ROOM_BLOBS",
+			"id": "local"
+		}
+	],
 	// Shared `recflare` D1 — the `img` worker owns the `images` metadata table
 	// (schema/migration here); the `api` worker writes/reads it. Its own
 	// migrations_table keeps its history separate on the shared database. The
