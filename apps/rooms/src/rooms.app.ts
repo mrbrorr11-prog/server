@@ -338,7 +338,8 @@ const PERMISSION_ROLES = [Role.None, Role.Host, Role.Moderator, Role.CoOwner, Ro
  *
  * Defaults: managers may build, nobody else may ({@link buildsByDefault}). The global maker
  * pen stays with the hardcoded dev accounts in normal rooms. In Rec Room Originals,
- * the Maker Pen is always disabled, including for system/dev accounts and overrides.
+ * only confirmed co-owners and the creator can use the Maker Pen. Other players
+ * cannot gain it from permission overrides or a global dev-account grant.
  */
 function photonAccessToken(
 	accountId: number,
@@ -406,15 +407,20 @@ function photonAccessToken(
 			for (const [name, value] of values) permissions.push(row(name, at, value, true))
 		}
 	}
-	// RROs are first-party gameplay rooms, not construction sandboxes. Their
-	// permission is a hard lock, stronger than subroom overrides, ownership,
-	// co-ownership and the legacy dev-account global Maker Pen exception.
-	// Always send explicit False cells: the client can read Role 0 OR its own
-	// role depending on the build, and both must agree.
+	// In first-party RROs, keep ordinary players out of Maker Pen, regardless of
+	// overrides or their global developer exception. Confirmed co-owners and the
+	// creator still need to edit the room. A manager's token carries the full
+	// permission matrix, so restrict the other tiers; Role 0 is also set for the
+	// current manager because some client builds consult that row for themselves.
+	// The Role 0 grant is ONLY in this manager's response; visitors still receive
+	// their own explicit False token and never inherit the manager's table.
 	if (isRro) {
+		const isManager = buildsByDefault(role)
 		for (const permission of permissions) {
 			if (permission.Permission === 'CAN_USE_MAKER_PEN') {
-				permission.Value = 'False'
+				permission.Value = isManager && (permission.Role === Role.None || permission.Role >= Role.CoOwner)
+					? 'True'
+					: 'False'
 				permission.Override = true
 			}
 		}

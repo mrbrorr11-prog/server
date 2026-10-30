@@ -4851,7 +4851,7 @@ describe('rooms endpoints', () => {
 		expect(body.Permissions.every((p) => p.Value === 'False')).toBe(true)
 	})
 
-	it('GET /photon_access_token gives RRO managers build tools except the locked Maker Pen', async () => {
+	it('GET /photon_access_token lets RRO managers use Maker Pen without granting it to lower roles', async () => {
 		// Room 2 is account 1's, with account 2 a co-owner (Role 30).
 		const tableFor = async (accountId: number) => {
 			await env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
@@ -4875,14 +4875,15 @@ describe('rooms endpoints', () => {
 		// A manager gets the WHOLE table — a row per permission for every role tier, grouped
 		// by role — because the permissions screen reads each cell from the row at exactly
 		// that role. Nothing is stored on subroom 2 here, so every row is a default
-		// (`Override: false`): co-owner and creator rows True, the rest False.
+		// (`Override: false`) for other tools. Maker Pen is explicitly gated by the
+		// player's RRO manager status, rather than by editable permission overrides.
 		const roles = [0, 10, 20, 30, 255]
 		for (const table of [await tableFor(1), await tableFor(2)]) {
 			expect(table.length).toBe(30)
 			expect(table.map((p) => p.Role)).toEqual(roles.flatMap((r) => Array<number>(6).fill(r)))
 			for (const p of table) {
 				if (p.Permission === 'CAN_USE_MAKER_PEN') {
-					expect(p).toMatchObject({ Override: true, Value: 'False' })
+					expect(p).toMatchObject({ Override: true, Value: p.Role === 0 || p.Role >= 30 ? 'True' : 'False' })
 				} else {
 					expect(p).toMatchObject({ Override: false, Value: p.Role >= 30 ? 'True' : 'False' })
 				}
@@ -4891,10 +4892,10 @@ describe('rooms endpoints', () => {
 		await env.DB.prepare('DELETE FROM presence WHERE account_id IN (1, 2)').run()
 	})
 
-	it('RROs deny Maker Pen for visitors, owners, and dev accounts even with an explicit grant', async () => {
+	it('RRO Maker Pen is for creators and co-owners, not visitors or devs without a room role', async () => {
 		// Room 2 is RecCenter, a first-party RRO. Make an explicit Role 0 grant so
-		// this test proves the room classification overrides BOTH permission tables
-		// and the hardcoded global dev accounts.
+		// this test proves the room classification overrides permission tables for
+		// visitors and the hardcoded dev exception, without denying true managers.
 		const seed = await env.DB.prepare('SELECT data FROM room WHERE room_id = 2').first<{
 			data: string
 		}>()
@@ -4922,7 +4923,9 @@ describe('rooms endpoints', () => {
 				}
 				const makerPen = body.Permissions.filter((p) => p.Permission === 'CAN_USE_MAKER_PEN')
 				expect(makerPen.length).toBeGreaterThan(0)
-				expect(makerPen.every((p) => p.Value === 'False' && p.Override)).toBe(true)
+				const isManager = accountId === 1 || accountId === 2
+				expect(makerPen.every((p) => p.Override &&
+					p.Value === (isManager && (p.Role === 0 || p.Role >= 30) ? 'True' : 'False'))).toBe(true)
 			}
 		} finally {
 			await env.DB.prepare(
@@ -5498,7 +5501,8 @@ describe('rooms endpoints', () => {
 		})
 
 		it('a stored entry at the caller’s role beats one below it, and revokes a default', async () => {
-			// Take the maker pen away from co-owners, while everyone may spawn inventions.
+			// A saved Maker Pen denial must not lock out a confirmed RRO co-owner.
+			// Non-RRO permissions still apply normally to other tools.
 			await putPermissions(
 				'/rooms/2/subrooms/2/permissions',
 				[{ Permission: 'CAN_USE_MAKER_PEN', Role: 30, Override: true, Type: 0, Value: 'False' }],
@@ -5507,14 +5511,14 @@ describe('rooms endpoints', () => {
 			const coOwner = await permissionsIn(749, 2)
 			expect(cell(coOwner, 'CAN_USE_MAKER_PEN', 30)).toMatchObject({
 				Override: true,
-				Value: 'False',
+				Value: 'True',
 			})
 			expect(cell(coOwner, 'CAN_SPAWN_INVENTIONS', 30)).toMatchObject({ Value: 'True' })
-			// RROs revoke the Maker Pen even from a room creator with the global dev grant.
-			expect(valueOf(await permissionsIn(1, 2), 'CAN_USE_MAKER_PEN', 255)).toBe('False')
+			// Creators retain the Maker Pen regardless of a co-owner override.
+			expect(valueOf(await permissionsIn(1, 2), 'CAN_USE_MAKER_PEN', 255)).toBe('True')
 
 			// A Host (Role 10) sits between: the Role 0 grant reaches them, the Role 30
-			// revocation does not, and their own default is no maker pen either way.
+			// revocation does not, and an RRO host has no Maker Pen either way.
 			const host = await permissionsIn(748, 2)
 			expect(host.map((p) => p.Role).filter((r) => r === 10).length).toBe(6)
 			expect(valueOf(host, 'CAN_SPAWN_INVENTIONS')).toBe('True')
@@ -5572,11 +5576,11 @@ describe('rooms endpoints', () => {
 				).status
 			).toBe(200)
 
-			// The row is gone, but the RRO hard-lock still denies the Maker Pen.
+			// The row is gone; confirmed RRO co-owners still have the Maker Pen.
 			expect(await stored()).toBe(0)
 			expect(cell(await permissionsIn(749, 2), 'CAN_USE_MAKER_PEN', 30)).toMatchObject({
 				Override: true,
-				Value: 'False',
+				Value: 'True',
 			})
 
 			// Clearing a pair that was never overridden is a no-op, not an insert.
