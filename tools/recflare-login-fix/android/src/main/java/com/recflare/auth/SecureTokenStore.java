@@ -1,13 +1,10 @@
 package com.recflare.auth;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
-
-import com.unity3d.player.UnityPlayer;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
@@ -31,10 +28,9 @@ public final class SecureTokenStore {
     private static final String TRANSFORM = "AES/GCM/NoPadding";
     private SecureTokenStore() {}
 
-    private static SharedPreferences prefs() {
-        Activity activity = UnityPlayer.currentActivity;
-        if (activity == null) throw new IllegalStateException("Unity activity unavailable");
-        return activity.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    private static SharedPreferences prefs(Context context) {
+        if (context == null) throw new IllegalArgumentException("Android context unavailable");
+        return context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
     private static SecretKey getKey() throws Exception {
@@ -54,21 +50,21 @@ public final class SecureTokenStore {
         return generator.generateKey();
     }
 
-    public static synchronized void write(String refreshToken) throws Exception {
+    public static synchronized void write(Context context, String refreshToken) throws Exception {
         if (refreshToken == null || refreshToken.isEmpty())
             throw new IllegalArgumentException("Missing refresh token");
         Cipher cipher = Cipher.getInstance(TRANSFORM);
         cipher.init(Cipher.ENCRYPT_MODE, getKey());
         byte[] ciphertext = cipher.doFinal(refreshToken.getBytes(StandardCharsets.UTF_8));
-        boolean saved = prefs().edit()
+        boolean saved = prefs(context).edit()
                 .putString(SAVED, Base64.encodeToString(ciphertext, Base64.NO_WRAP))
                 .putString(SAVED_IV, Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP))
                 .commit();
         if (!saved) throw new IllegalStateException("Failed to save encrypted session");
     }
 
-    public static synchronized String read() throws Exception {
-        String encrypted = prefs().getString(SAVED, null);
+    public static synchronized String read(Context context) throws Exception {
+        String encrypted = prefs(context).getString(SAVED, null);
         String encodedIv = prefs().getString(SAVED_IV, null);
         if (encrypted == null || encodedIv == null) return "";
         Cipher cipher = Cipher.getInstance(TRANSFORM);
@@ -78,7 +74,7 @@ public final class SecureTokenStore {
         return new String(plaintext, StandardCharsets.UTF_8);
     }
 
-    public static synchronized void delete() {
+    public static synchronized void delete(Context context) {
         if (!prefs().edit().remove(SAVED).remove(SAVED_IV).commit())
             throw new IllegalStateException("Failed to clear saved session");
     }
