@@ -65,7 +65,7 @@ public final class SecureTokenStore {
 
     public static synchronized String read(Context context) throws Exception {
         String encrypted = prefs(context).getString(SAVED, null);
-        String encodedIv = prefs().getString(SAVED_IV, null);
+        String encodedIv = prefs(context).getString(SAVED_IV, null);
         if (encrypted == null || encodedIv == null) return "";
         Cipher cipher = Cipher.getInstance(TRANSFORM);
         cipher.init(Cipher.DECRYPT_MODE, getKey(),
@@ -75,7 +75,7 @@ public final class SecureTokenStore {
     }
 
     public static synchronized void delete(Context context) {
-        if (!prefs().edit().remove(SAVED).remove(SAVED_IV).commit())
+        if (!prefs(context).edit().remove(SAVED).remove(SAVED_IV).commit())
             throw new IllegalStateException("Failed to clear saved session");
     }
 }
