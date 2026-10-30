@@ -1,6 +1,7 @@
 import { PhotonImage } from '@cf-wasm/photon'
 import { createExecutionContext, env, SELF, waitOnExecutionContext } from 'cloudflare:test'
 import { beforeAll, describe, expect, it } from 'vitest'
+import { putKvImage } from '@repo/hono-helpers'
 
 import app from '../../img.app'
 
@@ -177,6 +178,32 @@ describe('img endpoints', () => {
 		const resized = await SELF.fetch(`${ORIGIN}/3DCharades.jpg?width=128`)
 		expect(resized.status).toBe(200)
 		expect(resized.headers.get('cache-control')).toBe(CACHE_CONTROL)
+	})
+
+	it('serves saved photos from free KV when R2 bindings are disabled', async () => {
+		const name = 'sharecamera/2026-10-30/from-camera.jpg'
+		await putKvImage(env.RECFLARE_ROOM_BLOBS, name, IMAGE_BYTES, 'image/jpeg')
+		const ctx = createExecutionContext()
+		const noR2: Env = { ...env, IMAGES: undefined as unknown as R2Bucket, CDN_ASSETS: undefined as unknown as R2Bucket, IMG_SIGNING_ENABLED: false }
+		const url = `${ORIGIN}/${name}?sig=p1`
+		const res = await app.fetch(new Request(url), noR2, ctx)
+		await waitOnExecutionContext(ctx)
+		expect(res.status).toBe(200)
+		expect(res.headers.get('content-type')).toBe('image/jpeg')
+		expect(res.headers.get('content-signature')).toMatch(/^key-id=KEY:RSA:p1\\.rec\\.net; data=/)
+		expect(new Uint8Array(await res.arrayBuffer())).toEqual(IMAGE_BYTES)
+		const etag = res.headers.get('etag')
+		const recheck = await app.fetch(new Request(url, { headers: { 'if-none-match': etag! } }), noR2, createExecutionContext())
+		expect(recheck.status).toBe(304)
+	})
+
+	it('serves extensionless photo uploads from free KV with the image/ key prefix', async () => {
+		const name = '2030-07-12/extensionless'
+		await putKvImage(env.RECFLARE_ROOM_BLOBS, `image/${name}`, IMAGE_BYTES, 'image/jpeg')
+		const noR2: Env = { ...env, IMAGES: undefined as unknown as R2Bucket, CDN_ASSETS: undefined as unknown as R2Bucket, IMG_SIGNING_ENABLED: false }
+		const res = await app.fetch(new Request(`${ORIGIN}/${name}`), noR2, createExecutionContext())
+		expect(res.status).toBe(200)
+		expect(new Uint8Array(await res.arrayBuffer())).toEqual(IMAGE_BYTES)
 	})
 
 	it('serves an extensionless key from the cdn bucket under image/', async () => {
