@@ -6,6 +6,8 @@ export type Env = SharedHonoEnv & {
 	DB: D1Database
 	/** R2 bucket holding the served image objects, keyed by filename. */
 	IMAGES: R2Bucket
+	/** Shared free KV for photo uploads and room files. */
+	RECFLARE_ROOM_BLOBS: KVNamespace
 	/**
 	 * Shared `recflare-cdn` bucket. Only its `image/` prefix is read here: images
 	 * uploaded through the `storage` worker are stored extensionless under
