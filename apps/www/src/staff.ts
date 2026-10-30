@@ -1762,15 +1762,27 @@ export async function createArchiveImportRoomHandler(c: Context<App>) {
 	}
 	const room = await createStudioRoom(c.env.DB, name, playerId, 1)
 	if (!room) return c.json({ error: 'This room name is already in use.' }, 409)
-	if (description) await setRoomDescription(c.env.DB, room.RoomId, description)
+
+	// Stored room blobs are Record<string, unknown>, so validate the identifiers
+	// before using them as numbers or indexing the hydrated subroom list.
+	const roomId = room.RoomId
+	if (typeof roomId !== 'number' || !Number.isSafeInteger(roomId) || roomId <= 0) {
+		return c.json({ error: 'Room created but returned an invalid room ID.' }, 500)
+	}
+	const home = Array.isArray(room.SubRooms) ? room.SubRooms[0] : undefined
+	const subRoomId =
+		home !== null && typeof home === 'object' && 'SubRoomId' in home
+			? home.SubRoomId
+			: undefined
+	if (typeof subRoomId !== 'number' || !Number.isSafeInteger(subRoomId) || subRoomId <= 0) {
+		return c.json({ error: 'Room created but its Home subroom could not be found.', roomId }, 500)
+	}
+
+	if (description) await setRoomDescription(c.env.DB, roomId, description)
 	await recordPlayerAudit(c, 'import_recroom_archive', {
 		sourceRoomName: rawName,
-		roomId: room.RoomId,
+		roomId,
 		// The imported scene is uploaded by the browser, not stored in this audit entry.
 	})
-	const subRoomId = room.SubRooms[0]?.SubRoomId
-	if (!subRoomId) {
-		return c.json({ error: 'Room created but its Home subroom could not be found.', roomId: room.RoomId }, 500)
-	}
-	return c.json({ roomId: room.RoomId, subRoomId, roomName: room.Name, private: true }, 201)
+	return c.json({ roomId, subRoomId, roomName: name, private: true }, 201)
 }
