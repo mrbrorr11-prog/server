@@ -1,8 +1,9 @@
 /**
  * Read the room name from an old Rec Room share link.
  *
- * A rec.net room page contains a *name*, not a scene export. Never fetch remote
- * content from this URL — the caller still must supply an authorized scene file.
+ * Official rec.net and the recroom.network community port both provide a room
+ * name in their /room/<name> URLs, not a playable scene export. Never fetch remote
+ * content from these URLs — the caller supplies an authorized scene file.
  */
 export function roomNameFromRecNetLink(value: string): string | null {
 	const text = value.trim()
@@ -15,7 +16,7 @@ export function roomNameFromRecNetLink(value: string): string | null {
 		return null
 	}
 
-	if (!['rec.net', 'www.rec.net'].includes(url.hostname.toLowerCase())) return null
+	if (!['rec.net', 'www.rec.net', 'recroom.network', 'www.recroom.network'].includes(url.hostname.toLowerCase())) return null
 	if (!['http:', 'https:'].includes(url.protocol) || url.port || url.username || url.password) return null
 
 	const match = /^\/room\/([^/]+)\/?$/i.exec(url.pathname)
