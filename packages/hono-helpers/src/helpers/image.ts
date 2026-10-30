@@ -12,7 +12,7 @@
 /** What an image's leading bytes say it is. */
 export interface SniffedImage {
 	/** The media type to store and serve it under. */
-	contentType: string
+	contentType: 'image/jpeg' | 'image/png'
 	/** The extension to key it with, dot included. */
 	extension: string
 }
