@@ -337,13 +337,15 @@ const PERMISSION_ROLES = [Role.None, Role.Host, Role.Moderator, Role.CoOwner, Ro
  * theirs and are left out, so a visitor never sees — or gets — a co-owner's grants.
  *
  * Defaults: managers may build, nobody else may ({@link buildsByDefault}). The global maker
- * pen stays with the hardcoded dev accounts, whatever the room says.
+ * pen stays with the hardcoded dev accounts in normal rooms. In Rec Room Originals,
+ * the Maker Pen is always disabled, including for system/dev accounts and overrides.
  */
 function photonAccessToken(
 	accountId: number,
 	roomInstanceId: number | null,
 	role: number = Role.None,
-	overrides: RoomPermission[] = []
+	overrides: RoomPermission[] = [],
+	isRro = false
 ) {
 	const isBuild = (name: string): boolean =>
 		BUILD_PERMISSIONS.includes(name as (typeof BUILD_PERMISSIONS)[number])
@@ -404,6 +406,19 @@ function photonAccessToken(
 			for (const [name, value] of values) permissions.push(row(name, at, value, true))
 		}
 	}
+	// RROs are first-party gameplay rooms, not construction sandboxes. Their
+	// permission is a hard lock, stronger than subroom overrides, ownership,
+	// co-ownership and the legacy dev-account global Maker Pen exception.
+	// Always send explicit False cells: the client can read Role 0 OR its own
+	// role depending on the build, and both must agree.
+	if (isRro) {
+		for (const permission of permissions) {
+			if (permission.Permission === 'CAN_USE_MAKER_PEN') {
+				permission.Value = 'False'
+				permission.Override = true
+			}
+		}
+	}
 	return {
 		Permissions: permissions,
 		PhotonAccessToken: '',
@@ -429,7 +444,15 @@ async function handlePhotonAccessToken(c: Context<App>) {
 		typeof instance?.subRoomId === 'number'
 			? await getSubRoomPermissions(c.env.DB, instance.subRoomId)
 			: []
-	return c.json(photonAccessToken(accountId, instance?.roomInstanceId ?? null, role, overrides))
+	return c.json(
+		photonAccessToken(
+			accountId,
+			instance?.roomInstanceId ?? null,
+			role,
+			overrides,
+			room?.IsRRO === true
+		)
+	)
 }
 
 /**
