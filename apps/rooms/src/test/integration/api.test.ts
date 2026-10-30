@@ -4891,6 +4891,82 @@ describe('rooms endpoints', () => {
 		await env.DB.prepare('DELETE FROM presence WHERE account_id IN (1, 2)').run()
 	})
 
+	it('RROs deny Maker Pen for visitors, owners, and dev accounts even with an explicit grant', async () => {
+		// Room 2 is RecCenter, a first-party RRO. Make an explicit Role 0 grant so
+		// this test proves the room classification overrides BOTH permission tables
+		// and the hardcoded global dev accounts.
+		const seed = await env.DB.prepare('SELECT data FROM room WHERE room_id = 2').first<{
+			data: string
+		}>()
+		expect(JSON.parse(seed!.data).IsRRO).toBe(true)
+		await env.DB.prepare(
+			"INSERT OR REPLACE INTO subroom_permission (sub_room_id, permission, role, type, value) VALUES (2, 'CAN_USE_MAKER_PEN', 0, 0, 'True')"
+		).run()
+		try {
+			for (const accountId of [777, 1, 2, 3]) {
+				await env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
+					.bind(
+						JSON.stringify({
+							accountId,
+							roomInstance: { roomInstanceId: 1000330, roomId: 2, subRoomId: 2 },
+							expiresAt: Math.floor(Date.now() / 1000) + 900,
+						})
+					)
+					.run()
+				const res = await SELF.fetch(`${ORIGIN}/photon_access_token`, {
+					headers: await bearer(String(accountId)),
+				})
+				expect(res.status).toBe(200)
+				const body = (await res.json()) as {
+					Permissions: Array<{ Permission: string; Role: number; Value: string; Override: boolean }>
+				}
+				const makerPen = body.Permissions.filter((p) => p.Permission === 'CAN_USE_MAKER_PEN')
+				expect(makerPen.length).toBeGreaterThan(0)
+				expect(makerPen.every((p) => p.Value === 'False' && p.Override)).toBe(true)
+			}
+		} finally {
+			await env.DB.prepare(
+				"DELETE FROM subroom_permission WHERE sub_room_id = 2 AND permission = 'CAN_USE_MAKER_PEN' AND role = 0"
+			).run()
+			await env.DB.prepare('DELETE FROM presence WHERE account_id IN (777, 1, 2, 3)').run()
+		}
+	})
+
+	it('custom rooms still permit Maker Pen based on their normal role settings', async () => {
+		// Temporarily treat the seeded RecCenter record as a user-created room
+		// so this checks the same path without introducing a second test fixture.
+		const original = await env.DB.prepare('SELECT data FROM room WHERE room_id = 2').first<{
+			data: string
+		}>()
+		await env.DB.prepare(
+			"UPDATE room SET data = json_set(data, '$.IsRRO', json('false')) WHERE room_id = 2"
+		).run()
+		try {
+			for (const accountId of [1, 2]) {
+				await env.DB.prepare('INSERT OR REPLACE INTO presence (data) VALUES (?1)')
+					.bind(
+						JSON.stringify({
+							accountId,
+							roomInstance: { roomInstanceId: 1000331, roomId: 2, subRoomId: 2 },
+							expiresAt: Math.floor(Date.now() / 1000) + 900,
+						})
+					)
+					.run()
+				const res = await SELF.fetch(`${ORIGIN}/photon_access_token`, {
+					headers: await bearer(String(accountId)),
+				})
+				const body = (await res.json()) as {
+					Permissions: Array<{ Permission: string; Role: number; Value: string }>
+				}
+				expect(body.Permissions.filter((p) => p.Permission === 'CAN_USE_MAKER_PEN' &&
+					p.Role === (accountId === 1 ? 255 : 30)).every((p) => p.Value === 'True')).toBe(true)
+			}
+		} finally {
+			await env.DB.prepare('UPDATE room SET data = ?1 WHERE room_id = 2').bind(original!.data).run()
+			await env.DB.prepare('DELETE FROM presence WHERE account_id IN (1, 2)').run()
+		}
+	})
+
 	it('GET /photon_access_token grants the global maker pen to dev accounts (1/2/3), nothing else', async () => {
 		for (const sub of ['1', '2', '3']) {
 			// Out of any room: a visitor with the dev maker pen.
