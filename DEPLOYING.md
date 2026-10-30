@@ -114,6 +114,30 @@ wrangler secrets-store store create recflare --scopes workers
 
 Take the IDs output from the commands and put them into `.env`. (or with CI: `RECFLARE_KV='{"RECFLARE_MATCH_PRESENCE":"<id>","RECFLARE_PLAYER_SETTINGS":"<id>"}'`)
 
+**No-R2 room saves and photos:** Create one additional free KV namespace and use
+its id for the same `RECFLARE_ROOM_BLOBS` binding on `api`, `img`, `storage`,
+`cdn`, and `rooms` (they share the same `RECFLARE_KV` JSON mapping).
+
+```bash
+npx wrangler kv namespace create RECFLARE_ROOM_BLOBS
+```
+
+Add `"RECFLARE_ROOM_BLOBS":"<id from the output>"` to your existing
+`RECFLARE_KV` JSON in `.env`; **do not replace the existing namespace ids**.
+Set `RECFLARE_DISABLE_R2=1` in `.env` to deploy without R2 bucket bindings.
+After deploying, `api` stores camera uploads and photo metadata, `img` serves
+the bytes from the **same KV namespace**, and `storage` accepts basic JPEG/PNG
+uploads. Deploy `api`, `img`, and `storage` together (plus `cdn`/ `rooms` for
+room saves) and migrate the `img` metadata table if it isn't present. Free KV
+is quota-limited and supports JPEG/PNG photo objects no larger than 16 MiB;
+other large binary types may need another backend.
+
+An image not appearing on the website may also be **private** (`Accessibility=0`)
+or attached to a different account. The site's own-account photo list displays
+private photos only when signed in as that same account. The sideloaded game's
+placeholder "Coach" account is not the player's authenticated identity.
+
+
 The secrets store holds the shared `JWT_SECRET` HS256 signing key — every worker
 binds it so tokens signed by `auth` verify everywhere. Record its id in `.env` as
 `RECFLARE_SECRETS_STORE`, then set the key value once (all workers share it):
