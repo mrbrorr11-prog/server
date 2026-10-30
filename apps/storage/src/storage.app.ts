@@ -5,6 +5,8 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 import {
 	intVar,
 	putKvRoomBlob,
+	putKvImage,
+	KV_IMAGE_MAX_BYTES,
 	ROOM_BLOB_MAX_BYTES,
 	SNIFFED_IMAGE_FORMATS,
 	sniffImage,
@@ -385,7 +387,11 @@ const app = new Hono<App>()
 					contentType = image.contentType
 				}
 				const hash = await crypto.subtle.digest('SHA-256', bytes)
-				if (subfolder === 'room' && c.env.RECFLARE_ROOM_BLOBS) {
+				if (subfolder === 'image' && c.env.RECFLARE_ROOM_BLOBS && !c.env.CDN_ASSETS) {
+					if (bytes.byteLength > KV_IMAGE_MAX_BYTES)
+						return c.json({ error: 'Image exceeds the 16 MiB free-storage limit.' }, 413)
+					await putKvImage(c.env.RECFLARE_ROOM_BLOBS, `image/${filename}`, new Uint8Array(bytes), contentType as 'image/png' | 'image/jpeg')
+				} else if (subfolder === 'room' && c.env.RECFLARE_ROOM_BLOBS) {
 					if (bytes.byteLength > ROOM_BLOB_MAX_BYTES)
 						return c.json({ error: 'Room save exceeds the 64 MiB free-storage limit.' }, 413)
 					// FileType 1 (scene), 6 (room metadata), 8 (legacy room) now
