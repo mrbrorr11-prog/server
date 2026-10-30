@@ -390,6 +390,8 @@ const app = new Hono<App>()
 				if (subfolder === 'image' && c.env.RECFLARE_ROOM_BLOBS && !c.env.CDN_ASSETS) {
 					if (bytes.byteLength > KV_IMAGE_MAX_BYTES)
 						return c.json({ error: 'Image exceeds the 16 MiB free-storage limit.' }, 413)
+					if (contentType !== 'image/png' && contentType !== 'image/jpeg')
+						return c.json({ error: 'Free photo storage supports only JPEG and PNG.' }, 415)
 					await putKvImage(c.env.RECFLARE_ROOM_BLOBS, `image/${filename}`, new Uint8Array(bytes), contentType as 'image/png' | 'image/jpeg')
 				} else if (subfolder === 'room' && c.env.RECFLARE_ROOM_BLOBS) {
 					if (bytes.byteLength > ROOM_BLOB_MAX_BYTES)
