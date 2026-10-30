@@ -21,3 +21,29 @@ This is **not an APK binary patch**. Your current build is IL2CPP, and committin
 The shared sideload account entry (Coach) must not be linked to arbitrary real accounts. The server-side block against unverified Oculus placeholder platform identities must remain.
 
 Never share actual refresh tokens, password values, auth headers, or unredacted live request bodies in logs.
+
+
+## Android secure-storage plugin (new)
+
+The folder `android/` contains a standalone Android library Gradle project. It uses
+Android Keystore AES-GCM to encrypt a refresh token, stores only the ciphertext and IV
+in app-private preferences, and exposes `SecureTokenStore.read/write/delete(Context)`.
+`AndroidKeystoreRefreshTokenStore.cs` calls it from Unity and supplies the Unity activity.
+
+With Android SDK 35, JDK 17, and Gradle 8.7 available, run:
+
+```sh
+cd tools/recflare-login-fix/android
+gradle --no-daemon assembleRelease
+```
+
+That creates `android/build/outputs/aar/android-release.aar`, a plugin artifact
+**not** a signed RecFlare APK. Add it to a buildable Unity project under
+`Assets/Plugins/Android/`, along with the two C# source files, and wire up
+`SessionRestorer` at login/startup. The existing IL2CPP APK won't execute either
+component until a compatible client is compiled and installed.
+
+**Security notes:** do not check keystore keys or real tokens into git; do not use
+the unverified sideload placeholder identity for sign-in; don't log token responses.
+A newly signed APK with a different Android signing key may require uninstalling
+the existing app, which can clear its local data. Back up data first.
