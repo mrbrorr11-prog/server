@@ -1756,8 +1756,9 @@ export async function createArchiveImportRoomHandler(c: Context<App>) {
 	}
 	const playerId = staffId(c)
 	// Match the ordinary room-creation cap instead of giving the import panel a bypass.
-	if ((await countRoomsByCreator(c.env.DB, playerId)) >= 10) {
-		return c.json({ error: 'You have reached the 10-room limit.' }, 403)
+	const maxRooms = intVar(c.env.MAX_ROOMS_PER_ACCOUNT, 10)
+	if (maxRooms > 0 && (await countRoomsByCreator(c.env.DB, playerId)) >= maxRooms) {
+		return c.json({ error: `You have reached the ${maxRooms}-room limit.` }, 403)
 	}
 	const room = await createStudioRoom(c.env.DB, name, playerId, 1)
 	if (!room) return c.json({ error: 'This room name is already in use.' }, 409)
