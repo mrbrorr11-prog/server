@@ -75,20 +75,14 @@ def inspect_catalog(zf, info):
                 if len(seen) >= 8:
                     break
 
-    # Catalogs can also name the remote host supplying content not packaged
-    # in the APK. Display just a few URL-like strings, never fetch them.
-    urls = re.findall(rb"https?://[a-zA-Z0-9._~:/?#@!    if hits:
-        for h in hits[:12]:
-            print("  MATCH", h)
-    else:
-        print("  No readable room-name or scene-ID clues (not proof of absence).")
-'()*+,;=%-]{7,}", raw)
+    # Catalogs may identify remote content hosts; only display URLs,
+    # never connect to those hosts or download content.
+    urls = re.findall(rb"https?://[a-zA-Z0-9._:/?&=%#-]{7,}", raw)
     if urls:
         print("  Referenced network locations (NOT downloaded):")
-        for url in dict.fromkeys(urls):
+        for url in list(dict.fromkeys(urls))[:12]:
             print("    ", url.decode("ascii", "replace")[:155])
-            if len(urls) > 12 and url == urls[11]:
-                break
+
 
 
 def main():
