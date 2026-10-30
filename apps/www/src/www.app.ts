@@ -51,6 +51,7 @@ import {
 	bansInForceHandler,
 	clearDormHandler,
 	clearPasswordHandler,
+	createArchiveImportRoomHandler,
 	clearRoomInstancesHandler,
 	createReportHandler,
 	getReportHandler,
@@ -808,6 +809,8 @@ const app = new Hono<App>()
 	.get('/api/staff/players/:id', playerHistoryHandler)
 	.get('/api/staff/players/:id/linked', linkedAccountsHandler)
 	// Genuine catalog search, developer-only like the gift it supplies.
+// Create a private RecFlare room from an authorized local Rec Room export.
+	.post('/api/staff/rooms/import-archive', requireDeveloper, createArchiveImportRoomHandler)
 	.get('/api/staff/catalog/search', requireDeveloper, searchGiftCatalogHandler)
 	// The staff card on a player's profile page — account fixes the game has no endpoint for.
 	// The gifts create value from nothing, so they are developer-only, not all staff.
