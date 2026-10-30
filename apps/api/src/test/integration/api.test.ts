@@ -28,7 +28,8 @@ import {
 	SUPPORTED_GAME_VERSIONS,
 } from '@repo/domain'
 
-import '../../api.app'
+import apiApp from '../../api.app'
+import { getKvImage } from '@repo/hono-helpers'
 
 import { PLATFORM_SCHEMA_DDL } from '../../../../auth/src/platform-db'
 import { SCHEMA_DDL as MESSAGE_SCHEMA_DDL } from '../../../../chat/src/message-db'
@@ -6959,6 +6960,43 @@ describe('images', () => {
 	// worker serves the object under whatever type is stored — so an HTML body under an
 	// image name would be a page on the image origin. The bytes decide, and only images
 	// get in.
+	test('R2-free photo upload persists to KV and can become a profile picture', async () => {
+		const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4])
+		const freeEnv = { ...env, IMAGES: undefined as unknown as R2Bucket }
+		const form = new FormData()
+		form.set('imgMeta', JSON.stringify({ savedImageType: 4, accessibility: 1 }))
+		form.set('image', new File([bytes], 'photo.jpg', { type: 'image/jpeg' }))
+		const created = await apiApp.fetch(
+			new Request(`${ORIGIN}/api/images/v4/uploadsaved`, {
+				method: 'POST',
+				headers: await bearer('42'),
+				body: form,
+			}),
+			freeEnv
+		)
+		expect(created.status).toBe(200)
+		const { ImageName } = (await created.json()) as { ImageName: string }
+		expect(ImageName.startsWith('profile/')).toBe(true)
+		expect(ImageName.endsWith('.jpg')).toBe(true)
+		const image = await getKvImage(env.RECFLARE_ROOM_BLOBS, ImageName)
+		expect(image?.contentType).toBe('image/jpeg')
+		expect(new Uint8Array(image!.bytes)).toEqual(bytes)
+		const row = await env.DB.prepare('SELECT data FROM account WHERE account_id = 42').first<{ data: string }>()
+		expect(JSON.parse(row!.data).profileImage).toBe(ImageName)
+		const deleted = await apiApp.fetch(
+			new Request(`${ORIGIN}/api/images/v1/deletesaved`, {
+				method: 'POST',
+				headers: { ...(await bearer('42')), 'content-type': 'application/json' },
+				body: JSON.stringify({ ImageName }),
+			}),
+			freeEnv
+		)
+		expect(deleted.status).toBe(200)
+		expect(await getKvImage(env.RECFLARE_ROOM_BLOBS, ImageName)).toBeNull()
+		const newRow = await env.DB.prepare('SELECT data FROM account WHERE account_id = 42').first<{ data: string }>()
+		expect(JSON.parse(newRow!.data).profileImage).toBe('DefaultProfileImage.jpg')
+	})
+
 	test('POST /api/images/v4/uploadsaved refuses a file whose bytes are not an image', async () => {
 		const objectsBefore = (await env.IMAGES.list()).objects.length
 		const fd = new FormData()

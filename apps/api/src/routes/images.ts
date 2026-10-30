@@ -23,7 +23,7 @@ import {
 	toImagesBulk,
 	toImagesPlayer,
 } from '@repo/domain'
-import { SNIFFED_IMAGE_FORMATS, sniffImage } from '@repo/hono-helpers'
+import { KV_IMAGE_MAX_BYTES, deleteKvImage, putKvImage, SNIFFED_IMAGE_FORMATS, sniffImage } from '@repo/hono-helpers'
 
 import { authedId, unauthorized } from '../http'
 import {
@@ -246,7 +246,7 @@ export const imageRoutes = new Hono<App>({ strict: false })
 			const limit = maxApiUploadBytes(c.env)
 			// parseBody has already materialized the multipart part. Reject it before arrayBuffer()
 			// creates another full-size allocation and before the object can consume R2 storage.
-			if (exceedsApiUploadLimit(file, limit)) {
+			if (exceedsApiUploadLimit(file, Math.min(limit, c.env.IMAGES ? limit : KV_IMAGE_MAX_BYTES))) {
 				return c.json({ error: `image exceeds the ${limit}-byte upload limit` }, 413)
 			}
 
@@ -283,7 +283,13 @@ export const imageRoutes = new Hono<App>({ strict: false })
 			const typePrefix = (typeFolder[savedImageType] ?? typeFolder[SavedImageType.None]) + '/'
 			const datePrefix = new Date().toISOString().slice(0, 10) + '/'
 			const name = typePrefix + datePrefix + crypto.randomUUID() + image.extension
-			await c.env.IMAGES.put(name, bytes, { httpMetadata: { contentType: image.contentType } })
+			if (c.env.IMAGES) {
+				await c.env.IMAGES.put(name, bytes, { httpMetadata: { contentType: image.contentType } })
+			} else if (c.env.RECFLARE_ROOM_BLOBS) {
+				await putKvImage(c.env.RECFLARE_ROOM_BLOBS, name, bytes, image.contentType)
+			} else {
+				return c.json({ error: 'Image storage is not configured' }, 503)
+			}
 
 			// A profile thumbnail becomes the account's avatar — persist it on the
 			// account row (a JSON blob in the shared accounts table) so it sticks.
@@ -353,7 +359,12 @@ export const imageRoutes = new Hono<App>({ strict: false })
 			// Drop the metadata (and cheers) first, then the object. An R2 delete is
 			// idempotent, so a missing object is fine.
 			await deleteImage(c.env.DB, image)
-			await c.env.IMAGES.delete(imageName)
+			if (c.env.IMAGES) await c.env.IMAGES.delete(imageName)
+			if (c.env.RECFLARE_ROOM_BLOBS) await deleteKvImage(c.env.RECFLARE_ROOM_BLOBS, imageName)
+			// Deleting a profile photo must not leave a broken avatar reference.
+			await c.env.DB.prepare(
+				"UPDATE account SET data = json_set(data, '$.profileImage', 'DefaultProfileImage.jpg') WHERE account_id = ?1 AND json_extract(data, '$.profileImage') = ?2"
+			).bind(id, imageName).run()
 
 			return c.json({ success: true })
 		}

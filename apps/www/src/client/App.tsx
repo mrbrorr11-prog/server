@@ -1464,8 +1464,10 @@ function SiteSearch({ navigate }: { navigate: Navigate }) {
  * Safe to call `where()` in render: a caller only has photos to pass once a fetch that
  * went through it has resolved (see MyRooms).
  */
-function PhotoGrid({ photos }: { photos: PublicPhoto[] }) {
+function PhotoGrid({ photos, onUseAsProfile }: { photos: PublicPhoto[]; onUseAsProfile?: (imageName: string) => Promise<void> }) {
 	const [open, setOpen] = useState<PublicPhoto | null>(null)
+	const [savingProfile, setSavingProfile] = useState(false)
+	const [profileError, setProfileError] = useState('')
 	const dialogRef = useRef<HTMLDialogElement>(null)
 
 	useEffect(() => {
@@ -1504,11 +1506,26 @@ function PhotoGrid({ photos }: { photos: PublicPhoto[] }) {
 			{open && (
 				<dialog
 					ref={dialogRef}
-					className="photo-modal"
-					onClose={() => setOpen(null)}
+					className={`photo-modal${onUseAsProfile ? " has-profile-action" : ""}`}
+					onClose={() => { setOpen(null); setProfileError("") }}
 					onClick={() => setOpen(null)}
 				>
 					<img src={imageUrl(open.ImageName)} alt="" onError={handleWebsiteImageError} />
+					{onUseAsProfile && (
+						<div className="photo-modal-actions" onClick={(e) => e.stopPropagation()}>
+							<button type="button" disabled={savingProfile} onClick={() => {
+								setSavingProfile(true)
+								setProfileError('')
+								void onUseAsProfile(open.ImageName)
+									.then(() => dialogRef.current?.close())
+									.catch((e: unknown) => setProfileError(e instanceof Error ? e.message : String(e)))
+									.finally(() => setSavingProfile(false))
+							}}>
+								{savingProfile ? 'Saving…' : 'Use as profile picture'}
+							</button>
+							{profileError && <p className="error">{profileError}</p>}
+						</div>
+					)}
 				</dialog>
 			)}
 		</>
@@ -1707,7 +1724,13 @@ function PlayerPage({
 				) : photos.length === 0 ? (
 					<p className="muted">No public photos.</p>
 				) : (
-					<PhotoGrid photos={photos} />
+					<PhotoGrid
+						photos={photos}
+						onUseAsProfile={viewer?.accountId === account.accountId ? async (imageName) => {
+							await setProfileImage(imageName)
+							setAccount((previous) => previous ? { ...previous, profileImage: imageName } : previous)
+						} : undefined}
+					/>
 				)}
 			</section>
 

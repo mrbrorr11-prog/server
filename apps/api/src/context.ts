@@ -39,6 +39,8 @@ export type Env = SharedHonoEnv & {
 	// Image bucket (shared with the `img` worker, which serves objects back by
 	// key). Uploaded saved images are written here.
 	IMAGES: R2Bucket
+	/** Shared free KV for photo uploads and room files. */
+	RECFLARE_ROOM_BLOBS: KVNamespace
 	// Shared CDN bucket (owned by the `cdn` worker, written by `storage`). Read
 	// here only to hash an invention's uploaded data blob under `invention/`.
 	CDN_ASSETS: R2Bucket

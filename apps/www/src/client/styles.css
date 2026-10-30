@@ -2155,6 +2155,34 @@ button[type='submit']:disabled {
 	background: rgb(0 0 0 / 80%);
 }
 
+.photo-modal.has-profile-action img {
+	max-height: calc(90vh - 70px);
+}
+
+.photo-modal-actions {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+	padding: 10px;
+	background: #20252f;
+	border-radius: 0 0 9px 9px;
+	cursor: default;
+}
+
+.photo-modal-actions button {
+	border: 0;
+	border-radius: 7px;
+	padding: 10px 15px;
+	background: #ff8627;
+	font-weight: 700;
+	color: #fff;
+	cursor: pointer;
+}
+
+.photo-modal-actions button:disabled { opacity: .6; cursor: progress; }
+.photo-modal-actions .error { margin: 0; }
+
 /* `/image/<id>`: the one photo, fitted to the page. */
 .image-page img {
 	display: block;

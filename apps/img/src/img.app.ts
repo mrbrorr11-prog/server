@@ -4,6 +4,7 @@ import { describeRoute, openAPIRouteHandler } from 'hono-openapi'
 import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
+	getKvImage,
 	withCleanSpec,
 	withNoExecute,
 	withNotFound,
@@ -543,10 +544,34 @@ app.get(
 		// writeContentRange() below for why it is never answered with a bare 200.
 		const buffered = needsBody(transform, signing)
 		const range = buffered ? undefined : c.req.raw.headers
-		const object = await bucket.get(objectKey, {
-			...(ifNoneMatch ? { onlyIf: { etagDoesNotMatch: ifNoneMatch } } : {}),
-			...(range ? { range } : {}),
-		})
+		const object = bucket
+			? await bucket.get(objectKey, {
+				...(ifNoneMatch ? { onlyIf: { etagDoesNotMatch: ifNoneMatch } } : {}),
+				...(range ? { range } : {}),
+			})
+			: null
+
+		// Free deployments have no R2 binding. Saved photos live in the same
+		// KV namespace as room blobs but under a separate recflare-photo: prefix.
+		// Also check KV on an R2 miss to support a future R2 migration.
+		if (!object) {
+			const stored = await getKvImage(c.env.RECFLARE_ROOM_BLOBS, objectKey)
+			if (stored) {
+				const headers = new Headers({
+					'content-type': stored.contentType,
+					'cache-control': CACHE_CONTROL,
+				})
+				if (!transform) {
+					headers.set('etag', `"${stored.etag}"`)
+					if (ifNoneMatch === stored.etag) return new Response(null, { status: 304, headers })
+				}
+				applyStubSignature(headers, signing)
+				if (buffered) return finalizeImage(c.env, stored.bytes, headers, transform, signing)
+				// An untransformed KV read serves the full image, ignoring a Range
+				// request rather than advertising unsupported partial responses.
+				return new Response(stored.bytes, { headers })
+			}
+		}
 
 		// Missing from both static and R2, or not a PNG/JPEG → serve the bundled
 		// DefaultProfileImage.jpg static asset so clients still get a valid image instead

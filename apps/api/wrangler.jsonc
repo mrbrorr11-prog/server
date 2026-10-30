@@ -45,6 +45,10 @@
 		{
 			"binding": "RECFLARE_PLAYER_SETTINGS",
 			"id": "local"
+		},
+		{
+			"binding": "RECFLARE_ROOM_BLOBS",
+			"id": "local"
 		}
 	],
 	// Cross-worker binding to the SignalR notifications hub DO (owned/migrated by
