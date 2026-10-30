@@ -6,7 +6,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('safe public room metadata import', () => {
 	it('reads a verified title and description from an allowlisted room page', async () => {
-		const fakeFetch = vi.fn(async () => new Response(
+		const fakeFetch = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => new Response(
 			'<html><head><title>^IgnitedBonnie - Rec Room</title>' +
 			'<meta property="og:description" content="An authorized public room archive."></head></html>',
 			{ status: 200, headers: { 'content-type': 'text/html' } }
