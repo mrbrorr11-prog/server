@@ -3,6 +3,10 @@ import {
 	addXp,
 	clearDormSaveBlob,
 	clearPasswordHash,
+	countRoomsByCreator,
+	createStudioRoom,
+	roomNameRejection,
+	setRoomDescription,
 	createGift,
 	deleteRoomInstancesByRoom,
 	getAccount,
@@ -1722,4 +1726,50 @@ export async function setSandboxHandler(c: Context<App>) {
 		changed,
 	})
 	return c.json({ sandbox: body.sandbox, changed })
+}
+
+/**
+ * Developer-only Rec Room archive import: creates a private room belonging to the caller.
+ * It does not fetch Rec Room's retired servers or assume a name contains scene data.
+ * The browser requires a locally supplied authorized .room/.binpb scene before calling
+ * this endpoint, then uploads the file to storage and publishes via the existing rooms API.
+ * Keep this separate from normal /rooms/create: requireDeveloper protects this website flow.
+ */
+export async function createArchiveImportRoomHandler(c: Context<App>) {
+	const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+	if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+		return c.json({ error: 'Expected room information as JSON.' }, 400)
+	}
+	if (body.permissionConfirmed !== true) {
+		return c.json({ error: 'Confirm you own the room or have permission to import it.' }, 400)
+	}
+	const rawName = typeof body.sourceRoomName === 'string' ? body.sourceRoomName.trim() : ''
+	const name = rawName.replace(/^\^/, '')
+	const badName = roomNameRejection(name, 'room name')
+	if (!name || badName !== null) {
+		return c.json({ error: badName ?? 'Enter the original Rec Room room name.' }, 400)
+	}
+	if (name.length > 80) return c.json({ error: 'Room name is too long.' }, 400)
+	const description = typeof body.description === 'string' ? body.description.trim() : ''
+	if (description.length > 1000) {
+		return c.json({ error: 'The description must be 1000 characters or fewer.' }, 400)
+	}
+	const playerId = staffId(c)
+	// Match the ordinary room-creation cap instead of giving the import panel a bypass.
+	if ((await countRoomsByCreator(c.env.DB, playerId)) >= 10) {
+		return c.json({ error: 'You have reached the 10-room limit.' }, 403)
+	}
+	const room = await createStudioRoom(c.env.DB, name, playerId, 1)
+	if (!room) return c.json({ error: 'This room name is already in use.' }, 409)
+	if (description) await setRoomDescription(c.env.DB, room.RoomId, description)
+	await recordPlayerAudit(c, 'import_recroom_archive', {
+		sourceRoomName: rawName,
+		roomId: room.RoomId,
+		// The imported scene is uploaded by the browser, not stored in this audit entry.
+	})
+	const subRoomId = room.SubRooms[0]?.SubRoomId
+	if (!subRoomId) {
+		return c.json({ error: 'Room created but its Home subroom could not be found.', roomId: room.RoomId }, 500)
+	}
+	return c.json({ roomId: room.RoomId, subRoomId, roomName: room.Name, private: true }, 201)
 }
