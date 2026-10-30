@@ -61,6 +61,8 @@ import {
 	giftRoomTokensHandler,
 	giftTokensHandler,
 	giftXpHandler,
+	playerLevelHandler,
+	setPlayerLevelHandler,
 	grantPlusHandler,
 	linkedAccountsHandler,
 	playerHistoryHandler,
@@ -818,6 +820,9 @@ const app = new Hono<App>()
 	// One id field for a custom avatar item, a skin or a consumable; the kind is resolved here.
 	.post('/api/staff/players/:id/gift-item', requireDeveloper, giftItemHandler)
 	.post('/api/staff/players/:id/gift-xp', requireDeveloper, giftXpHandler)
+	// Exact level edits are developer-only; both read and write enforce the signed role.
+	.get('/api/staff/players/:id/level', requireDeveloper, playerLevelHandler)
+	.post('/api/staff/players/:id/level', requireDeveloper, setPlayerLevelHandler)
 	// Everyone standing in a room, across all of its instances.
 	.post('/api/staff/rooms/:roomId/gift-tokens', requireDeveloper, giftRoomTokensHandler)
 	// Delete every live instance of a room — for one whose sessions are stuck. All staff.
