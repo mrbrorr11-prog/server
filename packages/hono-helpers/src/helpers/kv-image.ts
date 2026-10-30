@@ -28,9 +28,10 @@ export async function putKvImage(
 ): Promise<void> {
 	if (bytes.byteLength > KV_IMAGE_MAX_BYTES)
 		throw new RangeError('Photo exceeds the free-storage limit (16 MiB)')
-	const hash = await crypto.subtle.digest('SHA-256', bytes.slice().buffer)
+	const data = bytes.slice().buffer as ArrayBuffer
+	const hash = await crypto.subtle.digest('SHA-256', data)
 	const etag = Array.from(new Uint8Array(hash), (b) => b.toString(16).padStart(2, '0')).join('')
-	await kv.put(imageKey(name), bytes, { metadata: { contentType, etag } satisfies ImageMetadata })
+	await kv.put(imageKey(name), data, { metadata: { contentType, etag } satisfies ImageMetadata })
 }
 
 export async function getKvImage(
