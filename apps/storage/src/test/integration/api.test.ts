@@ -34,7 +34,7 @@ it('stores photos in free KV when R2 is disabled', async () => {
 	)
 	expect(res.status).toBe(200)
 	const body = (await res.json()) as { filename: string }
-	expect(body.filename).toMatch(/^\\d{4}-\\d{2}-\\d{2}\\//)
+	expect(body.filename).toMatch(/^\d{4}-\d{2}-\d{2}\//)
 	const saved = await getKvImage(env.RECFLARE_ROOM_BLOBS, `image/${body.filename}`)
 	expect(saved?.contentType).toBe('image/png')
 	expect(new Uint8Array(saved!.bytes)).toEqual(PNG_BYTES)
