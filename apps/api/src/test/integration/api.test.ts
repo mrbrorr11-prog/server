@@ -6976,7 +6976,8 @@ describe('images', () => {
 		)
 		expect(created.status).toBe(200)
 		const { ImageName } = (await created.json()) as { ImageName: string }
-		expect(ImageName).toMatch(/^profile\\/.*\\.jpg$/)
+		expect(ImageName.startsWith('profile/')).toBe(true)
+		expect(ImageName.endsWith('.jpg')).toBe(true)
 		const image = await getKvImage(env.RECFLARE_ROOM_BLOBS, ImageName)
 		expect(image?.contentType).toBe('image/jpeg')
 		expect(new Uint8Array(image!.bytes)).toEqual(bytes)
