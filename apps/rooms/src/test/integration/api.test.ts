@@ -4875,7 +4875,8 @@ describe('rooms endpoints', () => {
 		// A manager gets the WHOLE table — a row per permission for every role tier, grouped
 		// by role — because the permissions screen reads each cell from the row at exactly
 		// that role. Nothing is stored on subroom 2 here, so every row is a default
-		// (`Override: false`): co-owner and creator rows True, the rest False.
+		// (`Override: false`) for other tools. Maker Pen is explicitly gated by the
+		// player's RRO manager status, rather than by editable permission overrides.
 		const roles = [0, 10, 20, 30, 255]
 		for (const table of [await tableFor(1), await tableFor(2)]) {
 			expect(table.length).toBe(30)
@@ -5500,7 +5501,8 @@ describe('rooms endpoints', () => {
 		})
 
 		it('a stored entry at the caller’s role beats one below it, and revokes a default', async () => {
-			// Take the maker pen away from co-owners, while everyone may spawn inventions.
+			// A saved Maker Pen denial must not lock out a confirmed RRO co-owner.
+			// Non-RRO permissions still apply normally to other tools.
 			await putPermissions(
 				'/rooms/2/subrooms/2/permissions',
 				[{ Permission: 'CAN_USE_MAKER_PEN', Role: 30, Override: true, Type: 0, Value: 'False' }],
@@ -5509,14 +5511,14 @@ describe('rooms endpoints', () => {
 			const coOwner = await permissionsIn(749, 2)
 			expect(cell(coOwner, 'CAN_USE_MAKER_PEN', 30)).toMatchObject({
 				Override: true,
-				Value: 'False',
+				Value: 'True',
 			})
 			expect(cell(coOwner, 'CAN_SPAWN_INVENTIONS', 30)).toMatchObject({ Value: 'True' })
 			// Creators retain the Maker Pen regardless of a co-owner override.
 			expect(valueOf(await permissionsIn(1, 2), 'CAN_USE_MAKER_PEN', 255)).toBe('True')
 
 			// A Host (Role 10) sits between: the Role 0 grant reaches them, the Role 30
-			// revocation does not, and their own default is no maker pen either way.
+			// revocation does not, and an RRO host has no Maker Pen either way.
 			const host = await permissionsIn(748, 2)
 			expect(host.map((p) => p.Role).filter((r) => r === 10).length).toBe(6)
 			expect(valueOf(host, 'CAN_SPAWN_INVENTIONS')).toBe('True')
