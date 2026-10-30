@@ -53,6 +53,43 @@ def inspect_catalog(zf, info):
     else:
         print("  No readable room-name or scene-ID clues (not proof of absence).")
 
+    # Binary Addressables catalogs can embed readable keys between length
+    # prefixes and hashes. Show the number of references and printable nearby
+    # tokens, rather than one mostly unreadable binary blob per keyword.
+    for marker in (b"RecCenter", b"Rec_Center", b"Outdoor", b"cafeteria", b"stage", SCENE_ID.encode()):
+        found = list(re.finditer(re.escape(marker), raw, flags=re.IGNORECASE))
+        if not found:
+            continue
+        print(f"  \\n  {marker.decode('ascii')}: {len(found)} occurrence(s)")
+        seen = set()
+        for m in found[:30]:
+            excerpt = raw[max(0, m.start() - 36):min(len(raw), m.end() + 95)]
+            text = " | ".join(
+                x.decode("utf-8", "replace").strip()
+                for x in re.findall(rb"[ -~]{4,}", excerpt)
+                if x.strip()
+            )[:170]
+            if text and text not in seen:
+                seen.add(text)
+                print("    ", text)
+                if len(seen) >= 8:
+                    break
+
+    # Catalogs can also name the remote host supplying content not packaged
+    # in the APK. Display just a few URL-like strings, never fetch them.
+    urls = re.findall(rb"https?://[a-zA-Z0-9._~:/?#@!    if hits:
+        for h in hits[:12]:
+            print("  MATCH", h)
+    else:
+        print("  No readable room-name or scene-ID clues (not proof of absence).")
+'()*+,;=%-]{7,}", raw)
+    if urls:
+        print("  Referenced network locations (NOT downloaded):")
+        for url in dict.fromkeys(urls):
+            print("    ", url.decode("ascii", "replace")[:155])
+            if len(urls) > 12 and url == urls[11]:
+                break
+
 
 def main():
     pattern = sys.argv[1] if len(sys.argv) > 1 else "/workspaces/apk-input/*2026*.apk"
