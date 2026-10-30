@@ -1,6 +1,9 @@
 import {
 	addUsernameChange,
 	addXp,
+	getProgression,
+	MAX_LEVEL,
+	setProgressionLevel,
 	clearDormSaveBlob,
 	clearPasswordHash,
 	countRoomsByCreator,
@@ -1290,6 +1293,60 @@ export async function giftXpHandler(c: Context<App>) {
 		levelsGained,
 		giftId: gift.id,
 	})
+}
+
+/**
+ * Developer-only exact-level tools. The game serves levels 1–MAX_LEVEL from the
+ * shared progression table; writing just an account JSON field would not change it.
+ * The route also serves the current level for the editor's confirmation view.
+ */
+export async function playerLevelHandler(c: Context<App>) {
+	const playerId = playerIdParam(c)
+	if (playerId === null) return c.json({ error: 'A numeric player id is required' }, 400)
+	if ((await getAccount(c.env.DB, playerId)) === null) {
+		return c.json({ error: 'No such player' }, 404)
+	}
+	const progression = await getProgression(c.env.DB, playerId)
+	return c.json({ playerId, level: progression.Level, xp: progression.XP, maxLevel: MAX_LEVEL })
+}
+
+export async function setPlayerLevelHandler(c: Context<App>) {
+	const playerId = playerIdParam(c)
+	if (playerId === null) return c.json({ error: 'A numeric player id is required' }, 400)
+	const body = (await c.req.json().catch(() => null)) as { level?: unknown } | null
+	const level = body?.level
+	if (typeof level !== 'number' || !Number.isSafeInteger(level) || level < 1 || level > MAX_LEVEL) {
+		return c.json({ error: `Level must be a whole number between 1 and ${MAX_LEVEL}` }, 400)
+	}
+	if ((await getAccount(c.env.DB, playerId)) === null) {
+		return c.json({ error: 'No such player' }, 404)
+	}
+	const before = await getProgression(c.env.DB, playerId)
+	const after = await setProgressionLevel(c.env.DB, playerId, level)
+	await recordPlayerAudit(c, 'set_player_level', {
+		playerId,
+		previousLevel: before.Level,
+		previousXp: before.XP,
+		level: after.Level,
+		xp: after.XP,
+	})
+	logger.info('developer set player level', {
+		developerId: staffId(c), playerId, previousLevel: before.Level, level,
+	})
+	// Refresh the in-game level bar when online. Persistence is in D1, so
+	// notification failure does not undo the level change.
+	try {
+		await c.env.RECFLARE_NOTIFICATIONS_HUB.getByName(HUB_INSTANCE).notifyPlayer(
+			playerId,
+			NotificationType.PlayerProgressionLevelUpdate,
+			{ PlayerId: playerId, Level: after.Level, XP: after.XP } satisfies PlayerProgressionLevelPayload
+		)
+	} catch (err) {
+		logger.error('could not push developer level update', {
+			playerId, error: err instanceof Error ? err.message : String(err),
+		})
+	}
+	return c.json({ playerId, previousLevel: before.Level, level: after.Level, xp: after.XP })
 }
 
 /**
