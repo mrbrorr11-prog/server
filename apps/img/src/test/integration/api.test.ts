@@ -190,7 +190,7 @@ describe('img endpoints', () => {
 		await waitOnExecutionContext(ctx)
 		expect(res.status).toBe(200)
 		expect(res.headers.get('content-type')).toBe('image/jpeg')
-		expect(res.headers.get('content-signature')).toMatch(/^key-id=KEY:RSA:p1\\.rec\\.net; data=/)
+		expect(res.headers.get('content-signature')).toMatch(/^key-id=KEY:RSA:p1\.rec\.net; data=/)
 		expect(new Uint8Array(await res.arrayBuffer())).toEqual(IMAGE_BYTES)
 		const etag = res.headers.get('etag')
 		const recheck = await app.fetch(new Request(url, { headers: { 'if-none-match': etag! } }), noR2, createExecutionContext())
