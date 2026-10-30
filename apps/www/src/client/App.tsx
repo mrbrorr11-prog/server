@@ -4845,10 +4845,10 @@ function Dashboard({
 }
 
 /**
- * Archive-based room import for developers. The original Rec Room servers are offline,
- * so a room name is not a source of playable data. A local, authorized scene file is
- * required. Import creates a PRIVATE room before the upload; failed uploads may be
- * retried without creating duplicate rooms.
+ * Developer-only import with two explicit modes: link-only public room details
+ * (no playable scene) or a locally supplied .room/.binpb file (scene upload).
+ * A failed source fetch creates nothing. A failed scene upload can be retried
+ * without creating duplicate rooms.
  */
 function RecRoomImport({ navigate }: { navigate: Navigate }) {
 	const [sourceRoomLink, setSourceRoomLink] = useState('')
@@ -4868,26 +4868,47 @@ function RecRoomImport({ navigate }: { navigate: Navigate }) {
 		<section className="card">
 			<h2>Import a Rec Room room <span className="badge beta">Developer</span></h2>
 			<p className="muted">
-				Paste a Rec Room room link or enter its original name, then select the exported
-				scene data. Rec Room's
-				original servers are offline, so a room name alone cannot retrieve or recreate
-				the original room. This imports a scene you already have permission to use,
-				not a live download from Rec Room.
+				Paste a rec.net or recroom.network room link. With no scene file, RecFlare
+				will try to fetch the public room page and create a private room entry
+				using its name and description. This does not copy the playable room,
+				Rec Room Studio assets, or circuits. If the page cannot be verified,
+				no room is created.
 			</p>
 			<p className="muted">
-				If you have an official room export ZIP, extract it first. This importer currently
-				accepts .room or .binpb scene files; other export formats and Rec Room Studio
-				assets cannot be converted automatically. The imported room starts private.
+				Optional: select an authorized .room or .binpb scene file below to upload
+				the scene itself instead. Other export formats are not supported.
+				Either type of import starts private.
 			</p>
 			<form
 				className="blob-upload"
 				onSubmit={(event) => {
 					event.preventDefault()
-					if (!file || !permissionConfirmed || finished || pending || roomLinkError) return
+					if (!permissionConfirmed || finished || pending || roomLinkError) return
 					void run(async () => {
-						if (!isRoomBlobFile(file.name)) throw new Error('Choose a .room or .binpb scene file.')
 						const roomName = sourceRoomName.trim().replace(/^\^/, '')
 						if (!roomName) throw new Error('Enter the original room name.')
+						if (!file) {
+							if (!sourceRoomLink.trim()) throw new Error('Paste a room link for a public-details import.')
+							if (created) throw new Error('Retry the pending scene upload with a scene file.')
+							const destination = await call<{ roomId: number; subRoomId: number }>(
+								'/api/staff/rooms/import-archive',
+								{
+									method: 'POST',
+									authed: true,
+									json: {
+										sourceRoomName: roomName,
+										sourceRoomLink,
+										description: description.trim(),
+										permissionConfirmed,
+										metadataOnly: true,
+									},
+								}
+							)
+							setCreated(destination)
+							setFinished(true)
+							return 'Public room details imported. This is a private room entry only: no playable environment or scene data was copied.'
+						}
+						if (!isRoomBlobFile(file.name)) throw new Error('Choose a .room or .binpb scene file.')
 						// Convert before creating a room: bad files should not leave empty shells.
 						const blob = await prepareRoomBlob(file, downgrade)
 						let destination = created
@@ -4944,8 +4965,8 @@ function RecRoomImport({ navigate }: { navigate: Navigate }) {
 						disabled={pending || created !== null}
 					/>
 					<span className="hint">
-						Links from rec.net and recroom.network fill in the room name but cannot download its scene;
-						you must also provide an authorized .room or .binpb file below.
+						Paste a link to attempt a public-details import without uploading a file.
+						A playable room still requires compatible scene data.
 					</span>
 				</label>
 				{roomLinkError && <p className="error">{roomLinkError}</p>}
@@ -4973,12 +4994,11 @@ function RecRoomImport({ navigate }: { navigate: Navigate }) {
 					/>
 				</label>
 				<label className="blob-upload-file">
-					Authorized scene file (.room or .binpb)
+					Scene file (.room or .binpb) <span className="optional">optional</span>
 					<input
 						type="file"
 						accept={ROOM_BLOB_EXTENSIONS.join(',')}
 						disabled={pending || finished}
-						required
 						onChange={(event) => {
 							const picked = event.target.files?.[0] ?? null
 							if (picked && !isRoomBlobFile(picked.name)) {
@@ -5030,8 +5050,13 @@ function RecRoomImport({ navigate }: { navigate: Navigate }) {
 				)}
 				{error && <p className="error">{error}</p>}
 				{done && <p className="ok">{done}</p>}
-				<button type="submit" disabled={pending || finished || !file || !permissionConfirmed || !sourceRoomName.trim() || !!roomLinkError}>
-					{pending ? 'Importing…' : finished ? 'Imported' : created ? 'Retry scene upload' : 'Import room'}
+				<button
+					type="submit"
+					disabled={pending || finished || !permissionConfirmed || !sourceRoomName.trim() || !!roomLinkError ||
+						(!file && (!sourceRoomLink.trim() || created !== null))}
+				>
+					{pending ? 'Fetching / importing…' : finished ? 'Imported' :
+						created ? 'Retry scene upload' : file ? 'Import scene file' : 'Import public details only'}
 				</button>
 			</form>
 		</section>
