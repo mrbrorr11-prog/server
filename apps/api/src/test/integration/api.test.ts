@@ -1816,12 +1816,12 @@ describe('public endpoints', () => {
 		// The Unity client can send bare name/filename parameters. Request.formData() rejects
 		// this encoding, so the create route must use the tolerant multipart parser.
 		const body = new Blob([
-			`--${boundary}\\r\\nContent-Disposition: form-data; name=metadata\\r\\n\\r\\n${metadata}\\r\\n`,
-			`--${boundary}\\r\\nContent-Disposition: form-data; name=thumbnailImage; filename=thumb.bin\\r\\nContent-Type: application/octet-stream\\r\\n\\r\\n`,
+			`--${boundary}\r\nContent-Disposition: form-data; name=metadata\r\n\r\n${metadata}\r\n`,
+			`--${boundary}\r\nContent-Disposition: form-data; name=thumbnailImage; filename=thumb.bin\r\nContent-Type: application/octet-stream\r\n\r\n`,
 			PNG_BYTES.buffer,
-			`\\r\\n--${boundary}\\r\\nContent-Disposition: form-data; name=design; filename=design.bin\\r\\nContent-Type: application/octet-stream\\r\\n\\r\\n`,
+			`\r\n--${boundary}\r\nContent-Disposition: form-data; name=design; filename=design.bin\r\nContent-Type: application/octet-stream\r\n\r\n`,
 			PNG_BYTES.buffer,
-			`\\r\\n--${boundary}--\\r\\n`,
+			`\r\n--${boundary}--\r\n`,
 		])
 		const res = await exports.default.fetch(`${ORIGIN}/api/customAvatarItems/v1`, {
 			method: 'POST',
