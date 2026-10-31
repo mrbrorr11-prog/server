@@ -1803,6 +1803,59 @@ describe('public endpoints', () => {
 		return ((await res.json()) as { Value: { CustomAvatarItemId: string; Name: string } }).Value
 	}
 
+	test('POST /api/customAvatarItems/v1 accepts Unity multipart fields with unquoted names', async () => {
+		const boundary = 'recflare-custom-shirt-boundary'
+		const metadata = JSON.stringify({
+			Name: 'Unity custom shirt',
+			Description: '',
+			Price: 0,
+			BaseAvatarItemId: 2184,
+			BaseAvatarItemColor: '#F55C1A',
+			Accessibility: 0,
+		})
+		// The Unity client can send bare name/filename parameters. Request.formData() rejects
+		// this encoding, so the create route must use the tolerant multipart parser.
+		const body = new Blob([
+			`--${boundary}\\r\\nContent-Disposition: form-data; name=metadata\\r\\n\\r\\n${metadata}\\r\\n`,
+			`--${boundary}\\r\\nContent-Disposition: form-data; name=thumbnailImage; filename=thumb.bin\\r\\nContent-Type: application/octet-stream\\r\\n\\r\\n`,
+			PNG_BYTES.buffer,
+			`\\r\\n--${boundary}\\r\\nContent-Disposition: form-data; name=design; filename=design.bin\\r\\nContent-Type: application/octet-stream\\r\\n\\r\\n`,
+			PNG_BYTES.buffer,
+			`\\r\\n--${boundary}--\\r\\n`,
+		])
+		const res = await exports.default.fetch(`${ORIGIN}/api/customAvatarItems/v1`, {
+			method: 'POST',
+			headers: {
+				...(await bearer('205')),
+				'content-type': `multipart/form-data; boundary=${boundary}`,
+			},
+			body,
+		})
+		expect(res.status).toBe(200)
+		const result = (await res.json()) as {
+			Success: boolean
+			Value: {
+				CustomAvatarItemId: string
+				CreatorAccountId: number
+				Name: string
+				OutfitType: number
+				ThumbnailImageFilename: string
+				DesignFilename: string
+			}
+		}
+		expect(result.Success).toBe(true)
+		expect(result.Value).toMatchObject({
+			CreatorAccountId: 205,
+			Name: 'Unity custom shirt',
+			OutfitType: 105,
+		})
+		for (const filename of [result.Value.ThumbnailImageFilename, result.Value.DesignFilename]) {
+			const stored = await env.IMAGES.get(filename)
+			expect(stored).not.toBeNull()
+			expect(await stored!.arrayBuffer()).toEqual(PNG_BYTES.buffer)
+		}
+	})
+
 	/** POST the bulk lookup with `ids` as repeated form fields, as the client binds them. */
 	async function bulkLookup(
 		ids: string[],
