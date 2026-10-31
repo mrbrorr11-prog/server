@@ -1856,6 +1856,69 @@ describe('public endpoints', () => {
 		}
 	})
 
+	test('custom shirts upload to free KV, publish, and delete when R2 is disabled', async () => {
+		const freeEnv = { ...env, IMAGES: undefined as unknown as R2Bucket }
+		const form = new FormData()
+		form.set(
+			'metadata',
+			JSON.stringify({
+				Name: 'KV custom shirt',
+				Description: '',
+				Price: 100,
+				BaseAvatarItemId: 2184,
+				BaseAvatarItemColor: '#F55C1A',
+				Accessibility: 0,
+			})
+		)
+		form.set('thumbnailImage', new File([PNG_BYTES], 'thumb.bin', { type: 'application/octet-stream' }))
+		form.set('design', new File([PNG_BYTES], 'design.bin', { type: 'application/octet-stream' }))
+		const created = await apiApp.fetch(
+			new Request(`${ORIGIN}/api/customAvatarItems/v1`, {
+				method: 'POST',
+				headers: await bearer('205'),
+				body: form,
+			}),
+			freeEnv
+		)
+		expect(created.status).toBe(200)
+		const result = (await created.json()) as {
+			Success: boolean
+			Value: {
+				CustomAvatarItemId: string
+				ThumbnailImageFilename: string
+				DesignFilename: string
+			}
+		}
+		expect(result.Success).toBe(true)
+		for (const filename of [result.Value.ThumbnailImageFilename, result.Value.DesignFilename]) {
+			const image = await getKvImage(env.RECFLARE_ROOM_BLOBS, filename)
+			expect(image?.contentType).toBe('image/png')
+			expect(new Uint8Array(image!.bytes)).toEqual(PNG_BYTES)
+		}
+
+		const published = await apiApp.fetch(
+			new Request(`${ORIGIN}/api/customAvatarItems/v1/${result.Value.CustomAvatarItemId}`, {
+				method: 'PUT',
+				headers: { ...(await bearer('205')), 'content-type': 'application/json' },
+				body: JSON.stringify({ Accessibility: 1 }),
+			}),
+			freeEnv
+		)
+		expect(published.status).toBe(200)
+		expect(await published.json()).toMatchObject({ Success: true, Value: { Accessibility: 1 } })
+
+		const deleted = await apiApp.fetch(
+			new Request(`${ORIGIN}/api/customAvatarItems/v1/${result.Value.CustomAvatarItemId}`, {
+				method: 'DELETE',
+				headers: await bearer('205'),
+			}),
+			freeEnv
+		)
+		expect(deleted.status).toBe(200)
+		for (const filename of [result.Value.ThumbnailImageFilename, result.Value.DesignFilename])
+			expect(await getKvImage(env.RECFLARE_ROOM_BLOBS, filename)).toBeNull()
+	})
+
 	/** POST the bulk lookup with `ids` as repeated form fields, as the client binds them. */
 	async function bulkLookup(
 		ids: string[],
