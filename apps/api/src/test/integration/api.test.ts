@@ -1879,7 +1879,10 @@ describe('public endpoints', () => {
 			'thumbnailImage',
 			new File([PNG_BYTES], 'thumb.bin', { type: 'application/octet-stream' })
 		)
-		form.set('design', new File([PNG_BYTES], 'design.bin', { type: 'application/octet-stream' }))
+		form.set(
+			'design',
+			new File([PNG_BYTES], 'design.bin', { type: 'application/octet-stream' })
+		)
 		const created = await apiApp.fetch(
 			new Request(`${ORIGIN}/api/customAvatarItems/v1`, {
 				method: 'POST',
