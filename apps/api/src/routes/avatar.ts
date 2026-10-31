@@ -21,6 +21,7 @@ import {
 	sniffImage,
 } from '@repo/hono-helpers'
 
+import { parseMultipart } from '../../../studio/src/multipart'
 import {
 	createCustomAvatarItem,
 	deleteCustomAvatarItem,
@@ -36,7 +37,6 @@ import {
 	updateCustomAvatarItem,
 } from '../custom-avatar-items-db'
 import { authedId, unauthorized } from '../http'
-import { parseMultipart } from '../../../studio/src/multipart'
 import {
 	createInvention,
 	deleteInvention,
@@ -485,7 +485,8 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 				'by the caller and answers with it in the PascalCase `{ Value, Success, Error, ' +
 				'error_id }` envelope. The item is filed under `OutfitType` 105, the custom shirt, ' +
 				'which is what the store’s user-generated-content tab searches for.\n\n' +
-				'The two files go to the shared image bucket (`recflare-img`) under ' +
+				'The two files go to `recflare-img` when R2 is enabled, or to the existing free ' +
+				'`RECFLARE_ROOM_BLOBS` KV namespace on no-R2 deployments, under ' +
 				'`avatar-item/<date>/<id>-thumb.png` and `avatar-item/<date>/<id>-design.png`; those ' +
 				'keys are the `ThumbnailImageFilename` / `DesignFilename` on the row. Each file is ' +
 				'identified by its bytes — the client posts them under `.bin` names — and must be a ' +
@@ -580,7 +581,7 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			// The parts' filenames and content-types are the uploader's claims (the client
 			// posts both as `.bin`); the `img` worker serves each back under whatever type is
 			// stored, so the extension and the stored type come from the bytes. Both are
-			// checked before either is written, so a refusal leaves nothing in R2.
+			// checked before either is written, so a refusal leaves nothing in the configured image store.
 			const thumbnailBytes = new Uint8Array(await thumbnailFile.arrayBuffer())
 			const thumbnail = sniffImage(thumbnailBytes)
 			if (!thumbnail) return fail(`thumbnailImage is not a ${SNIFFED_IMAGE_FORMATS} image`)
@@ -607,8 +608,18 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 					])
 				} else {
 					await Promise.all([
-						putKvImage(c.env.RECFLARE_ROOM_BLOBS, thumbnailImageFilename, thumbnailBytes, thumbnail.contentType),
-						putKvImage(c.env.RECFLARE_ROOM_BLOBS, designFilename, designBytes, design.contentType),
+						putKvImage(
+							c.env.RECFLARE_ROOM_BLOBS,
+							thumbnailImageFilename,
+							thumbnailBytes,
+							thumbnail.contentType
+						),
+						putKvImage(
+							c.env.RECFLARE_ROOM_BLOBS,
+							designFilename,
+							designBytes,
+							design.contentType
+						),
 					])
 				}
 			} catch (error) {
@@ -717,7 +728,8 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			tags: ['Avatar'],
 			summary: 'Delete a custom avatar item',
 			description:
-				'Removes the item and its two bucket objects (thumbnail and design). Only the ' +
+				'Removes the item and its two image objects (thumbnail and design) from configured ' +
+				'storage. Only the ' +
 				'creator may delete. Answers the deleted item in the `{ Value, Success, Error, ' +
 				'error_id }` envelope.',
 			security: AUTHED,
@@ -742,9 +754,9 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 
 			const item = await deleteCustomAvatarItem(c.env.DB, itemId)
 			if (!item) return fail(404, 'No such item')
-			// The row is gone; the objects follow. A missing key is a no-op for R2. A first-party
-			// item has neither (it is rendered from its saves' assetbundles), so there is nothing
-			// to delete for one.
+			// The row is gone; the objects follow. Missing keys are no-ops in both storage backends.
+			// A first-party item has neither (it is rendered from its saves' assetbundles), so
+			// there is nothing to delete for one.
 			const keys = [item.ThumbnailImageFilename, item.DesignFilename].filter(
 				(k): k is string => k !== null
 			)
