@@ -504,8 +504,14 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 					'Missing or malformed metadata / files, a file that is not an image, or a `Price` outside 0–1000'
 				),
 				401: UNAUTHORIZED_RESPONSE,
-				413: json(CustomAvatarItemResponse, 'Either file exceeds the configured storage limit (16 MiB on free KV)'),
-				503: json(CustomAvatarItemResponse, 'Image storage is not configured or the upload failed'),
+				413: json(
+					CustomAvatarItemResponse,
+					'Either file exceeds the configured storage limit (16 MiB on free KV)'
+				),
+				503: json(
+					CustomAvatarItemResponse,
+					'Image storage is not configured or the upload failed'
+				),
 			},
 		}),
 		async (c) => {
