@@ -1870,7 +1870,10 @@ describe('public endpoints', () => {
 				Accessibility: 0,
 			})
 		)
-		form.set('thumbnailImage', new File([PNG_BYTES], 'thumb.bin', { type: 'application/octet-stream' }))
+		form.set(
+			'thumbnailImage',
+			new File([PNG_BYTES], 'thumb.bin', { type: 'application/octet-stream' })
+		)
 		form.set('design', new File([PNG_BYTES], 'design.bin', { type: 'application/octet-stream' }))
 		const created = await apiApp.fetch(
 			new Request(`${ORIGIN}/api/customAvatarItems/v1`, {
@@ -1905,7 +1908,10 @@ describe('public endpoints', () => {
 			freeEnv
 		)
 		expect(published.status).toBe(200)
-		expect(await published.json()).toMatchObject({ Success: true, Value: { Accessibility: 1 } })
+		expect(await published.json()).toMatchObject({
+			Success: true,
+			Value: { Accessibility: 1 },
+		})
 
 		const deleted = await apiApp.fetch(
 			new Request(`${ORIGIN}/api/customAvatarItems/v1/${result.Value.CustomAvatarItemId}`, {
