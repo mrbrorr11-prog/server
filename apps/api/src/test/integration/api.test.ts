@@ -1854,6 +1854,11 @@ describe('public endpoints', () => {
 			expect(stored).not.toBeNull()
 			expect(await stored!.arrayBuffer()).toEqual(PNG_BYTES.buffer)
 		}
+		const deleted = await exports.default.fetch(
+			`${ORIGIN}/api/customAvatarItems/v1/${result.Value.CustomAvatarItemId}`,
+			{ method: 'DELETE', headers: await bearer('205') }
+		)
+		expect(deleted.status).toBe(200)
 	})
 
 	test('custom shirts upload to free KV, publish, and delete when R2 is disabled', async () => {
