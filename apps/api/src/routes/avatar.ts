@@ -588,7 +588,8 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			// The parts' filenames and content-types are the uploader's claims (the client
 			// posts both as `.bin`); the `img` worker serves each back under whatever type is
 			// stored, so the extension and the stored type come from the bytes. Both are
-			// checked before either is written, so a refusal leaves nothing in the configured image store.
+			// checked before either is written, so a refusal leaves nothing in the configured image
+			// store.
 			const thumbnailBytes = new Uint8Array(await thumbnailFile.arrayBuffer())
 			const thumbnail = sniffImage(thumbnailBytes)
 			if (!thumbnail) return fail(`thumbnailImage is not a ${SNIFFED_IMAGE_FORMATS} image`)
