@@ -95,9 +95,9 @@ export const CachedLogin = z.object({
 })
 
 /**
- * The stubbed Oculus cached login served to sideloaded APKs. Same shape as `CachedLogin`,
- * but `requirePassword` is true — with no Meta SDK there is nothing to prove platform
- * ownership with, so the client falls through to username/password.
+ * The password-first Oculus login entry. Same shape as `CachedLogin`, but
+ * `requirePassword` is true so every Oculus client falls through to username/password.
+ * This is only a login prompt: the password grant still verifies the real account password.
  */
 export const FakeCachedLogin = CachedLogin.extend({
 	requirePassword: z.literal(true).describe('Always true — the entry is not platform-backed'),
