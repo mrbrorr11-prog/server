@@ -870,10 +870,9 @@ const app = new Hono<App>()
 				'`cached_login` grant (both read the same table). An account linked to several',
 				'platforms appears in each of their pickers. An unknown id yields `[]` (not a 404)',
 				'and the client falls back to a fresh login or create_account.',
-				'EXCEPT the exact identity `1/1` (Oculus, id `1`), which is stubbed for SIDELOADED',
-				'APKs: with no Meta SDK they have no real identity to ask about and stall on an',
-				'empty picker. It consults nothing and returns one canned, non-redeemable entry',
-				'with `requirePassword: true`, sending the build to username/password login.',
+				'For ALL Oculus (Meta) identities, this server returns one canned, non-redeemable',
+				'entry with `requirePassword: true`. This deliberately sends Quest players to',
+				'username/password login rather than relying on Meta cached-login verification.',
 				'Older clients GET this; the 20250424.01 build POSTs it with a',
 				'`deviceId` / `platformAuth` / `time` form body attesting the platform session.',
 				'That body is accepted and ignored — both methods answer identically from the',
@@ -906,18 +905,13 @@ const app = new Hono<App>()
 			const { platform, id } = c.req.param()
 			logger.info('cached login lookup', { platform, id })
 			const platformInt = Number.parseInt(platform, 10)
-			// SIDELOADED APKs ONLY. A sideloaded build has no Meta SDK behind it, so it can't
-			// produce a real Meta identity or a nonce to prove one with — it asks about the
-			// placeholder identity `1/1`, and an empty picker leaves it stuck on the platform
-			// login screen with nothing to do. Hand back one canned entry to push it onto the
-			// username/password login instead, which is the only flow such a build can finish.
-			// `requirePassword` is true for exactly that reason: there's no platform proof here,
-			// and the `cached_login` grant would (correctly) refuse this entry.
-			//
-			// Scoped to that ONE identity rather than to all of platform 1 — store builds do
-			// real Meta logins, and shadowing the whole platform would hide genuine links from
-			// their pickers.
-			if (platformInt === PlatformType.Oculus && id === SIDELOAD_PLATFORM_ID) {
+			// Password-first fallback for EVERY Oculus identity. The Meta nonce flow has been
+			// unreliable across headsets, and the password grant already authenticates the
+			// account independently. Returning a canned entry with requirePassword=true makes
+			// the client show its username/password form instead of attempting passwordless
+			// cached login. The later password grant still checks the real account password;
+			// this does not reveal or grant access to any account.
+			if (platformInt === PlatformType.Oculus) {
 				return c.json([FAKE_OCULUS_CACHED_LOGIN])
 			}
 			// Listed straight from the link table, which is also what the `cached_login`
