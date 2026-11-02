@@ -233,36 +233,30 @@ describe('auth worker routes', () => {
 		expect(await res.text()).toBe('"AA=="')
 	})
 
-	test.each([
-		['0 (Steam)', 0],
-		['1 (Meta)', 1],
-	])(
-		'GET /cachedlogin/forplatformid/%s/:id returns [] for an unknown id',
-		async (_label, platform) => {
-			const res = await exports.default.fetch(
-				`${ORIGIN}/cachedlogin/forplatformid/${platform}/abc123`
-			)
+	test('GET /cachedlogin/forplatformid/0/abc123 returns [] for an unknown Steam id', async () => {
+		const res = await exports.default.fetch(`${ORIGIN}/cachedlogin/forplatformid/0/abc123`)
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual([])
+	})
+
+	// Every Oculus identity receives a password-required prompt. The account is still
+	// authenticated by the username/password grant; this entry is not an account grant.
+	test.each(['1', 'abc123'])(
+		'GET /cachedlogin/forplatformid/1/%s returns the password-first Oculus entry',
+		async (id) => {
+			const res = await exports.default.fetch(`${ORIGIN}/cachedlogin/forplatformid/1/${id}`)
 			expect(res.status).toBe(200)
-			expect(await res.json()).toEqual([])
+			expect(await res.json()).toEqual([
+				{
+					platform: 1,
+					platformId: '1',
+					accountId: 1,
+					lastLoginTime: '2026-07-19T17:13:29.225Z',
+					requirePassword: true,
+				},
+			])
 		}
 	)
-
-	// The one stubbed identity: `1/1` consults nothing and always answers the canned
-	// entry, which is how a sideloaded APK (no Meta SDK, so no real identity) gets off
-	// the platform login screen and onto username/password.
-	test('GET /cachedlogin/forplatformid/1/1 returns the canned Oculus entry', async () => {
-		const res = await exports.default.fetch(`${ORIGIN}/cachedlogin/forplatformid/1/1`)
-		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual([
-			{
-				platform: 1,
-				platformId: '1',
-				accountId: 1,
-				lastLoginTime: '2026-07-19T17:13:29.225Z',
-				requirePassword: true,
-			},
-		])
-	})
 
 	// Only Steam (0) and Meta (1) can be verified — Steam by its signed platform_auth
 	// ticket, Meta by validating its nonce with Meta. Every OTHER platform is rejected
