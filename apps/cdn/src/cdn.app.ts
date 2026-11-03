@@ -4,6 +4,8 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
 	applyNoExecuteHeaders,
+	getKvRoomBlob,
+	headKvRoomBlob,
 	withCleanSpec,
 	withDefaultCors,
 	withNoExecute,
@@ -46,6 +48,12 @@ import type { App, Env } from './context'
  */
 async function serveAsset(c: Context<App>, key: string) {
 	if (key.includes('..')) return c.body(null, 400)
+
+	// Free room-saves backend: a complete manifest indicates that the scene data
+	// is stored in KV. Keep R2 as a fallback for old blobs when it is bound.
+	const kvResponse = await getKvRoomBlob(c.env.RECFLARE_ROOM_BLOBS, key, c.req.raw)
+	if (kvResponse) return kvResponse
+	if (!c.env.CDN_ASSETS) return c.notFound()
 
 	const ifNoneMatch = c.req.header('if-none-match')?.replace(/"/g, '')
 	// R2 parses the `Range` header itself when handed the request headers, so there is no
@@ -450,7 +458,7 @@ async function unityAssetR2Key(env: StudioAssetEnv, filename: string): Promise<s
 		if (/^(quest\/)?studio-avatar\//.test(filename)) return `avatar/${filename}`
 		// Room builds and consumable exports use the game's /room namespace.
 		// Retain older installations that stored the same filename at the bucket root.
-		if (filename.startsWith('studio/') && (await env.CDN_ASSETS.head(`room/${filename}`)))
+		if (filename.startsWith('studio/') && env.CDN_ASSETS && (await env.CDN_ASSETS.head(`room/${filename}`)))
 			return `room/${filename}`
 		return filename
 	} catch (err) {
@@ -472,18 +480,25 @@ async function serveUnityAsset(c: Context<App>) {
 async function studioUnityAssetHead(env: StudioAssetEnv, name: string): Promise<Response> {
 	if (name.includes('..')) return new Response(null, { status: 400 })
 	const key = await unityAssetR2Key(env, name)
-	const head = await env.CDN_ASSETS.head(key ?? `unityasset/${name}`)
-	if (!head) return new Response(null, { status: 404 })
+	const head = key?.startsWith('room/')
+		? await headKvRoomBlob(env.RECFLARE_ROOM_BLOBS, key)
+		: null
+	const r2head = head ? null : env.CDN_ASSETS ? await env.CDN_ASSETS.head(key ?? `unityasset/${name}`) : null
+	if (!head && !r2head) return new Response(null, { status: 404 })
 
 	const headers = new Headers()
-	head.writeHttpMetadata(headers)
-	headers.set('etag', head.httpEtag)
+	if (r2head) {
+		r2head.writeHttpMetadata(headers)
+		headers.set('etag', r2head.httpEtag)
+	} else {
+		headers.set('etag', `"${head!.etag}"`)
+	}
 	headers.set('accept-ranges', 'bytes')
 	headers.set('cache-control', CACHE_CONTROL)
 	headers.set('access-control-allow-origin', '*')
 	applyNoExecuteHeaders(headers)
 	const response = new Response(null, { status: 200, headers, encodeBody: 'manual' })
-	response.headers.set('content-length', String(head.size))
+	response.headers.set('content-length', String(head?.length ?? r2head!.size))
 	return response
 }
 
@@ -537,7 +552,7 @@ app.get(
  * `mono` worker mounts this app with its own (superset) Env, which has no `ASSETS`
  * binding, and the wrapper below must stay mountable there.
  */
-type StudioAssetEnv = Pick<Env, 'DB' | 'CDN_ASSETS'>
+type StudioAssetEnv = Pick<Env, 'DB' | 'CDN_ASSETS' | 'RECFLARE_ROOM_BLOBS'>
 
 export default {
 	fetch(

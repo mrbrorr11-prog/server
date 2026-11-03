@@ -4,6 +4,8 @@ import { useWorkersLogger } from 'workers-tagged-logger'
 
 import {
 	intVar,
+	putKvRoomBlob,
+	ROOM_BLOB_MAX_BYTES,
 	SNIFFED_IMAGE_FORMATS,
 	sniffImage,
 	withCleanSpec,
@@ -284,6 +286,7 @@ const app = new Hono<App>()
 			if (files.length === 0) return c.json({ error: 'No source files supplied.' }, 400)
 			if (files.reduce((size, file) => size + file.size, 0) > limit)
 				return c.json({ error: 'Source files exceed the upload limit.' }, 413)
+			if (!c.env.CDN_ASSETS) return c.json({ error: 'Studio asset uploads require configured storage.' }, 503)
 			const uploaded = []
 			for (const file of files) {
 				const bytes = await file.arrayBuffer()
@@ -381,17 +384,23 @@ const app = new Hono<App>()
 					}
 					contentType = image.contentType
 				}
-				await c.env.CDN_ASSETS.put(`${subfolder}/${filename}`, bytes, {
-					customMetadata: { ownerId: String(id) },
-					httpMetadata: { contentType },
-					// Record the SHA-256 on the object. R2 stores an md5 on its own, but the
-					// hashes the client is served (an invention's `BlobHash`) are SHA-256, and
-					// only a checksum given at put time is readable later — this lets the `api`
-					// worker answer one from a HEAD instead of downloading the blob to digest it.
-					sha256: await crypto.subtle.digest('SHA-256', bytes),
-				})
+				const hash = await crypto.subtle.digest('SHA-256', bytes)
+				if (subfolder === 'room' && c.env.RECFLARE_ROOM_BLOBS) {
+					if (bytes.byteLength > ROOM_BLOB_MAX_BYTES)
+						return c.json({ error: 'Room save exceeds the 64 MiB free-storage limit.' }, 413)
+					// FileType 1 (scene), 6 (room metadata), 8 (legacy room) now
+					// round-trip through shared KV when R2 is unavailable.
+					await putKvRoomBlob(c.env.RECFLARE_ROOM_BLOBS, `${subfolder}/${filename}`, bytes, hash)
+				} else if (c.env.CDN_ASSETS) {
+					await c.env.CDN_ASSETS.put(`${subfolder}/${filename}`, bytes, {
+						customMetadata: { ownerId: String(id) },
+						httpMetadata: { contentType },
+						sha256: hash,
+					})
+				} else {
+					return c.json({ error: 'This file type has no configured free storage backend.' }, 503)
+				}
 				if (c.req.header('user-agent')?.startsWith('RRStudio')) {
-					const hash = await crypto.subtle.digest('SHA-256', bytes)
 					return c.json({
 						Filename: filename,
 						Hash: btoa(String.fromCharCode(...new Uint8Array(hash))),

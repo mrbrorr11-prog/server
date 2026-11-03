@@ -13,6 +13,12 @@
 			"bucket_name": "recflare-cdn"
 		}
 	],
+	"kv_namespaces": [
+		{
+			"binding": "RECFLARE_ROOM_BLOBS",
+			"id": "local"
+		}
+	],
 	// Shared Secrets Store holding the HS256 JWT signing key. Every worker binds the
 	// same store as JWT_SECRET so tokens signed by `auth` verify here. The "local"
 	// store_id placeholder is replaced with RECFLARE_SECRETS_STORE at deploy time.
