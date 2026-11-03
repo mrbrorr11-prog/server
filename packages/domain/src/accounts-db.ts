@@ -549,10 +549,18 @@ export async function updateAccount(
 	return updated
 }
 
+/** A caller-selected username was claimed before this account could be inserted. */
+export class UsernameTakenError extends Error {
+	constructor() {
+		super('That username is already taken.')
+		this.name = 'UsernameTakenError'
+	}
+}
+
 /**
- * Create and persist a new account. The id is the next free integer (above the
- * seeded system accounts); the username is auto-assigned (players don't choose
- * one initially) and the display name defaults to it.
+ * Create and persist a new account. Most clients get an auto-generated username;
+ * website signups can provide their own. For a chosen name, the availability check
+ * is part of the INSERT statement so two simultaneous signups cannot claim it.
  */
 export async function createAccount(
 	db: D1Database,
@@ -564,7 +572,18 @@ export async function createAccount(
 	const id = row?.next ?? 2
 	const username = overrides.username ?? randomUsername()
 	const account = defaultAccount(id, { username, displayName: username, ...overrides })
-	await db.prepare('INSERT INTO account (data) VALUES (?1)').bind(JSON.stringify(account)).run()
+	const data = JSON.stringify(account)
+	if (overrides.username === undefined) {
+		await db.prepare('INSERT INTO account (data) VALUES (?1)').bind(data).run()
+	} else {
+		const result = await db
+			.prepare(
+				'INSERT INTO account (data) SELECT ?1 WHERE NOT EXISTS (SELECT 1 FROM account WHERE username_lower = ?2)'
+			)
+			.bind(data, username.toLowerCase())
+			.run()
+		if (!result.meta.changes) throw new UsernameTakenError()
+	}
 	return account
 }
 
