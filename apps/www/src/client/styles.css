@@ -2268,3 +2268,35 @@ button[type='submit']:disabled {
 .alt-signin > .muted:first-child {
 	margin: 0;
 }
+
+/* Developer-only level editor: touch-friendly player search and selection. */
+.developer-level-results {
+	list-style: none;
+	margin: 18px 0 0;
+	padding: 0;
+	display: grid;
+	gap: 8px;
+}
+.developer-level-results li {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 12px;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	min-width: 0;
+}
+.developer-level-results li > span {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+.developer-level-results button {
+	flex: 0 0 auto;
+	min-height: 44px;
+	padding: 8px 14px;
+}
+.developer-level-results + .hint { display: block; }
+@media (max-width: 500px) {
+	.developer-level-results li { flex-wrap: wrap; }
+}

@@ -13,8 +13,15 @@ import {
 	MAX_BULK_OUTFIT_ACCOUNTS,
 	setOutfit,
 } from '@repo/domain'
-import { SNIFFED_IMAGE_FORMATS, sniffImage } from '@repo/hono-helpers'
+import {
+	deleteKvImage,
+	KV_IMAGE_MAX_BYTES,
+	putKvImage,
+	SNIFFED_IMAGE_FORMATS,
+	sniffImage,
+} from '@repo/hono-helpers'
 
+import { parseMultipart } from '../../../studio/src/multipart'
 import {
 	createCustomAvatarItem,
 	deleteCustomAvatarItem,
@@ -478,7 +485,8 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 				'by the caller and answers with it in the PascalCase `{ Value, Success, Error, ' +
 				'error_id }` envelope. The item is filed under `OutfitType` 105, the custom shirt, ' +
 				'which is what the store’s user-generated-content tab searches for.\n\n' +
-				'The two files go to the shared image bucket (`recflare-img`) under ' +
+				'The two files go to `recflare-img` when R2 is enabled, or to the existing free ' +
+				'`RECFLARE_ROOM_BLOBS` KV namespace on no-R2 deployments, under ' +
 				'`avatar-item/<date>/<id>-thumb.png` and `avatar-item/<date>/<id>-design.png`; those ' +
 				'keys are the `ThumbnailImageFilename` / `DesignFilename` on the row. Each file is ' +
 				'identified by its bytes — the client posts them under `.bin` names — and must be a ' +
@@ -496,7 +504,14 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 					'Missing or malformed metadata / files, a file that is not an image, or a `Price` outside 0–1000'
 				),
 				401: UNAUTHORIZED_RESPONSE,
-				413: json(CustomAvatarItemResponse, 'Either file exceeds the configured per-file limit'),
+				413: json(
+					CustomAvatarItemResponse,
+					'Either file exceeds the configured storage limit (16 MiB on free KV)'
+				),
+				503: json(
+					CustomAvatarItemResponse,
+					'Image storage is not configured or the upload failed'
+				),
 			},
 		}),
 		async (c) => {
@@ -506,11 +521,18 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			const fail = (message: string) =>
 				c.json({ Value: null, Success: false, Error: message, error_id: null }, 400)
 
-			const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
-			if (typeof body.metadata !== 'string') return fail('metadata is required')
+			// Unity can send bare (unquoted) multipart field names. Use the same tolerant
+			// parser as Avatar Studio rather than Request.formData(), which rejects those
+			// parts and turns the whole body into an empty form.
+			const body = await parseMultipart(c.req.raw.clone()).catch(() => ({}))
+			const part = (name: string): string | File | undefined =>
+				Object.entries(body).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1]
+			const rawMetadata = part('metadata')
+			const metadata = rawMetadata instanceof File ? await rawMetadata.text() : rawMetadata
+			if (typeof metadata !== 'string') return fail('metadata is required')
 			let meta: Record<string, unknown>
 			try {
-				const parsed: unknown = JSON.parse(body.metadata)
+				const parsed: unknown = JSON.parse(metadata)
 				if (!parsed || typeof parsed !== 'object') return fail('metadata must be a JSON object')
 				meta = parsed as Record<string, unknown>
 			} catch {
@@ -527,28 +549,36 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 				if (meta.Price > MAX_PLAYER_ITEM_PRICE)
 					return fail(`Price must be <= ${MAX_PLAYER_ITEM_PRICE}`)
 			}
-			if (!(body.thumbnailImage instanceof File)) return fail('thumbnailImage is required')
-			if (!(body.design instanceof File)) return fail('design is required')
+			const thumbnailFile = part('thumbnailImage')
+			const designFile = part('design')
+			if (!(thumbnailFile instanceof File)) return fail('thumbnailImage is required')
+			if (!(designFile instanceof File)) return fail('design is required')
+			if (!c.env.IMAGES && !c.env.RECFLARE_ROOM_BLOBS)
+				return c.json(
+					{ Value: null, Success: false, Error: 'Image storage is not configured', error_id: null },
+					503
+				)
 			const limit = maxApiUploadBytes(c.env)
-			// Each file gets the full per-file ceiling. Check both before either is copied into
-			// an ArrayBuffer or written, so a rejected request never leaves half an item in R2.
-			if (exceedsApiUploadLimit(body.thumbnailImage, limit)) {
+			// Free KV has a 16 MiB per-object limit; R2 deployments retain the configured limit.
+			const effectiveLimit = c.env.IMAGES ? limit : Math.min(limit, KV_IMAGE_MAX_BYTES)
+			// Check both files before copying or writing either one.
+			if (exceedsApiUploadLimit(thumbnailFile, effectiveLimit)) {
 				return c.json(
 					{
 						Value: null,
 						Success: false,
-						Error: `thumbnailImage exceeds the ${limit}-byte upload limit`,
+						Error: `thumbnailImage exceeds the ${effectiveLimit}-byte upload limit`,
 						error_id: null,
 					},
 					413
 				)
 			}
-			if (exceedsApiUploadLimit(body.design, limit)) {
+			if (exceedsApiUploadLimit(designFile, effectiveLimit)) {
 				return c.json(
 					{
 						Value: null,
 						Success: false,
-						Error: `design exceeds the ${limit}-byte upload limit`,
+						Error: `design exceeds the ${effectiveLimit}-byte upload limit`,
 						error_id: null,
 					},
 					413
@@ -558,29 +588,64 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			// The parts' filenames and content-types are the uploader's claims (the client
 			// posts both as `.bin`); the `img` worker serves each back under whatever type is
 			// stored, so the extension and the stored type come from the bytes. Both are
-			// checked before either is written, so a refusal leaves nothing in R2.
-			const thumbnailBytes = new Uint8Array(await body.thumbnailImage.arrayBuffer())
+			// checked before either is written, so a refusal leaves nothing in the configured image
+			// store.
+			const thumbnailBytes = new Uint8Array(await thumbnailFile.arrayBuffer())
 			const thumbnail = sniffImage(thumbnailBytes)
 			if (!thumbnail) return fail(`thumbnailImage is not a ${SNIFFED_IMAGE_FORMATS} image`)
-			const designBytes = new Uint8Array(await body.design.arrayBuffer())
+			const designBytes = new Uint8Array(await designFile.arrayBuffer())
 			const design = sniffImage(designBytes)
 			if (!design) return fail(`design is not a ${SNIFFED_IMAGE_FORMATS} image`)
 
-			// Both files go to the shared image bucket, foldered by upload date and keyed by
-			// the item's id (chosen here so the keys can carry it). The `img` worker serves
-			// them back by key.
+			// Use R2 when it is enabled; free deployments store the same keyed PNGs in the
+			// existing room/photo KV namespace. The img worker already checks that KV prefix
+			// when an R2 object is absent, so the Quest client uses the same image URLs either way.
 			const customAvatarItemId = crypto.randomUUID()
 			const prefix = `avatar-item/${new Date().toISOString().slice(0, 10)}/${customAvatarItemId}`
 			const thumbnailImageFilename = `${prefix}-thumb${thumbnail.extension}`
 			const designFilename = `${prefix}-design${design.extension}`
-			await Promise.all([
-				c.env.IMAGES.put(thumbnailImageFilename, thumbnailBytes, {
-					httpMetadata: { contentType: thumbnail.contentType },
-				}),
-				c.env.IMAGES.put(designFilename, designBytes, {
-					httpMetadata: { contentType: design.contentType },
-				}),
-			])
+			try {
+				if (c.env.IMAGES) {
+					await Promise.all([
+						c.env.IMAGES.put(thumbnailImageFilename, thumbnailBytes, {
+							httpMetadata: { contentType: thumbnail.contentType },
+						}),
+						c.env.IMAGES.put(designFilename, designBytes, {
+							httpMetadata: { contentType: design.contentType },
+						}),
+					])
+				} else {
+					await Promise.all([
+						putKvImage(
+							c.env.RECFLARE_ROOM_BLOBS,
+							thumbnailImageFilename,
+							thumbnailBytes,
+							thumbnail.contentType
+						),
+						putKvImage(
+							c.env.RECFLARE_ROOM_BLOBS,
+							designFilename,
+							designBytes,
+							design.contentType
+						),
+					])
+				}
+			} catch (error) {
+				console.error('custom avatar item image upload failed', error)
+				if (c.env.IMAGES) {
+					await c.env.IMAGES.delete([thumbnailImageFilename, designFilename]).catch(() => {})
+				}
+				if (c.env.RECFLARE_ROOM_BLOBS) {
+					await Promise.all([
+						deleteKvImage(c.env.RECFLARE_ROOM_BLOBS, thumbnailImageFilename),
+						deleteKvImage(c.env.RECFLARE_ROOM_BLOBS, designFilename),
+					]).catch(() => {})
+				}
+				return c.json(
+					{ Value: null, Success: false, Error: 'Could not store the shirt images', error_id: null },
+					503
+				)
+			}
 
 			const item = await createCustomAvatarItem(c.env.DB, {
 				customAvatarItemId,
@@ -671,7 +736,8 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 			tags: ['Avatar'],
 			summary: 'Delete a custom avatar item',
 			description:
-				'Removes the item and its two bucket objects (thumbnail and design). Only the ' +
+				'Removes the item and its two image objects (thumbnail and design) from configured ' +
+				'storage. Only the ' +
 				'creator may delete. Answers the deleted item in the `{ Value, Success, Error, ' +
 				'error_id }` envelope.',
 			security: AUTHED,
@@ -696,13 +762,17 @@ export const avatarRoutes = new Hono<App>({ strict: false })
 
 			const item = await deleteCustomAvatarItem(c.env.DB, itemId)
 			if (!item) return fail(404, 'No such item')
-			// The row is gone; the objects follow. A missing key is a no-op for R2. A first-party
-			// item has neither (it is rendered from its saves' assetbundles), so there is nothing
-			// to delete for one.
+			// The row is gone; the objects follow. Missing keys are no-ops in both storage backends.
+			// A first-party item has neither (it is rendered from its saves' assetbundles), so
+			// there is nothing to delete for one.
 			const keys = [item.ThumbnailImageFilename, item.DesignFilename].filter(
 				(k): k is string => k !== null
 			)
-			if (keys.length > 0) await c.env.IMAGES.delete(keys)
+			if (keys.length > 0) {
+				if (c.env.IMAGES) await c.env.IMAGES.delete(keys)
+				if (c.env.RECFLARE_ROOM_BLOBS)
+					await Promise.all(keys.map((key) => deleteKvImage(c.env.RECFLARE_ROOM_BLOBS, key)))
+			}
 			return c.json({ Value: item, Success: true, Error: null, error_id: null })
 		}
 	)

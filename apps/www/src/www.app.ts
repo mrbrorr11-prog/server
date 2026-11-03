@@ -51,6 +51,7 @@ import {
 	bansInForceHandler,
 	clearDormHandler,
 	clearPasswordHandler,
+	createArchiveImportRoomHandler,
 	clearRoomInstancesHandler,
 	createReportHandler,
 	getReportHandler,
@@ -60,6 +61,8 @@ import {
 	giftRoomTokensHandler,
 	giftTokensHandler,
 	giftXpHandler,
+	playerLevelHandler,
+	setPlayerLevelHandler,
 	grantPlusHandler,
 	linkedAccountsHandler,
 	playerHistoryHandler,
@@ -808,6 +811,8 @@ const app = new Hono<App>()
 	.get('/api/staff/players/:id', playerHistoryHandler)
 	.get('/api/staff/players/:id/linked', linkedAccountsHandler)
 	// Genuine catalog search, developer-only like the gift it supplies.
+// Create a private RecFlare room from an authorized local Rec Room export.
+	.post('/api/staff/rooms/import-archive', requireDeveloper, createArchiveImportRoomHandler)
 	.get('/api/staff/catalog/search', requireDeveloper, searchGiftCatalogHandler)
 	// The staff card on a player's profile page — account fixes the game has no endpoint for.
 	// The gifts create value from nothing, so they are developer-only, not all staff.
@@ -815,6 +820,9 @@ const app = new Hono<App>()
 	// One id field for a custom avatar item, a skin or a consumable; the kind is resolved here.
 	.post('/api/staff/players/:id/gift-item', requireDeveloper, giftItemHandler)
 	.post('/api/staff/players/:id/gift-xp', requireDeveloper, giftXpHandler)
+	// Exact level edits are developer-only; both read and write enforce the signed role.
+	.get('/api/staff/players/:id/level', requireDeveloper, playerLevelHandler)
+	.post('/api/staff/players/:id/level', requireDeveloper, setPlayerLevelHandler)
 	// Everyone standing in a room, across all of its instances.
 	.post('/api/staff/rooms/:roomId/gift-tokens', requireDeveloper, giftRoomTokensHandler)
 	// Delete every live instance of a room — for one whose sessions are stuck. All staff.

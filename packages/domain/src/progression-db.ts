@@ -193,6 +193,30 @@ export async function addXp(db: D1Database, accountId: number, xp: number): Prom
 	}
 }
 
+/**
+ * Set the exact supported level for a developer-operated account adjustment.
+ *
+ * This intentionally resets the current-level XP to zero, so lowering a level does
+ * not immediately re-level the player and raising one cannot carry an unknown
+ * amount of accumulated XP forward. No level-up prize boxes are granted.
+ * The account-existence and developer authorization checks belong to the caller.
+ */
+export async function setProgressionLevel(
+	db: D1Database,
+	accountId: number,
+	level: number
+): Promise<Progression> {
+	if (!Number.isSafeInteger(accountId) || accountId <= 0)
+		throw new RangeError('A valid player id is required')
+	if (!Number.isSafeInteger(level) || level < 1 || level > MAX_LEVEL)
+		throw new RangeError(`Level must be a whole number between 1 and ${MAX_LEVEL}`)
+	await db.prepare(
+		`INSERT INTO progression (account_id, level, xp) VALUES (?1, ?2, 0)
+		 ON CONFLICT (account_id) DO UPDATE SET level = excluded.level, xp = 0`
+	).bind(accountId, level).run()
+	return { PlayerId: accountId, Level: level, XP: 0 }
+}
+
 /** One player's progression, defaulted when they've earned nothing yet. */
 export async function getProgression(db: D1Database, accountId: number): Promise<Progression> {
 	const row = await db

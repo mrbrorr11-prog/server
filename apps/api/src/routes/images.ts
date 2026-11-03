@@ -240,34 +240,55 @@ export const imageRoutes = new Hono<App>({ strict: false })
 
 			const body = await c.req.parseBody().catch(() => ({}) as Record<string, unknown>)
 			// The client posts the file as `image`; accept `file` too for safety.
-			const candidate = body.image ?? body.file
+			// Client versions vary the multipart field casing. Prefer the documented
+			// image/file parts, but also accept a single File under a legacy field.
+			const candidate = [
+				body.image,
+				body.Image,
+				body.file,
+				body.File,
+				...Object.values(body),
+			].find((value): value is File => value instanceof File)
 			if (!(candidate instanceof File)) return c.json({ error: 'No file found in request' }, 400)
 			const file = candidate
 			const limit = maxApiUploadBytes(c.env)
-			// parseBody has already materialized the multipart part. Reject it before arrayBuffer()
-			// creates another full-size allocation and before the object can consume R2 storage.
-			if (exceedsApiUploadLimit(file, Math.min(limit, c.env.IMAGES ? limit : KV_IMAGE_MAX_BYTES))) {
-				return c.json({ error: `image exceeds the ${limit}-byte upload limit` }, 413)
+			// Free KV has a smaller per-object limit than R2. Report the actual limit
+			// rather than misleading the player with the configured (larger) R2 limit.
+			const effectiveLimit = Math.min(limit, c.env.IMAGES ? limit : KV_IMAGE_MAX_BYTES)
+			if (exceedsApiUploadLimit(file, effectiveLimit)) {
+				return c.json({ error: `image exceeds the ${effectiveLimit}-byte upload limit` }, 413)
 			}
 
 			// `imgMeta` is a JSON blob describing the upload (`SavedImageMetaDTO`),
 			// posted as a multipart field. It carries the metadata we record on the image
 			// (savedImageType, roomId, accessibility, description, taggedPlayerIds, …).
 			let meta: Record<string, unknown> = {}
-			if (typeof body.imgMeta === 'string') {
-				try {
-					const parsed = JSON.parse(body.imgMeta)
-					if (parsed && typeof parsed === 'object') meta = parsed as Record<string, unknown>
-				} catch {
-					// Malformed imgMeta — treat as an untyped upload (still stored).
+			const rawMeta = body.imgMeta ?? body.ImgMeta ?? body.imgmeta
+			try {
+				// Some Unity multipart encoders mark a JSON part as a file.
+				const rawText = rawMeta instanceof File ? await rawMeta.text() : rawMeta
+				if (typeof rawText === 'string') {
+					const parsed = JSON.parse(rawText)
+					if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+						meta = parsed as Record<string, unknown>
 				}
+			} catch {
+				// Malformed imgMeta — the image can still be stored as untyped.
 			}
-			// imgMeta shape: {playerIds, savedImageType, roomId, playerEventId, accessibility}.
-			const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined)
-			const savedImageType = num(meta.savedImageType) ?? SavedImageType.None
+			// Accept casing and numeric-string differences between game builds.
+			const pickMeta = (...keys: string[]): unknown => {
+				for (const key of keys) if (meta[key] !== undefined) return meta[key]
+				return undefined
+			}
+			const num = (v: unknown): number | undefined => {
+				if (typeof v === 'number') return Number.isFinite(v) ? v : undefined
+				if (typeof v === 'string' && /^-?\\d+$/.test(v.trim())) return Number(v.trim())
+				return undefined
+			}
+			const savedImageType = num(pickMeta('savedImageType', 'SavedImageType')) ?? SavedImageType.None
 			// roomId / playerEventId use 0 or -1 as "none" — store null in that case.
-			const roomId = num(meta.roomId)
-			const playerEventId = num(meta.playerEventId)
+			const roomId = num(pickMeta('roomId', 'RoomId'))
+			const playerEventId = num(pickMeta('playerEventId', 'PlayerEventId'))
 
 			// The part's filename and content-type are the uploader's claims; the `img` worker
 			// serves the object back under whatever type is stored, so both the extension and
@@ -307,11 +328,13 @@ export const imageRoutes = new Hono<App>({ strict: false })
 				imageName: name,
 				playerId: id,
 				type: savedImageType,
-				accessibility: num(meta.accessibility),
+				accessibility: num(pickMeta('accessibility', 'Accessibility')),
 				roomId: roomId !== undefined && roomId > 0 ? roomId : null,
-				description: typeof meta.description === 'string' ? meta.description : null,
-				taggedPlayerIds: Array.isArray(meta.playerIds)
-					? meta.playerIds.filter((v): v is number => typeof v === 'number')
+				description: typeof pickMeta('description', 'Description') === 'string'
+					? String(pickMeta('description', 'Description')) : null,
+				taggedPlayerIds: Array.isArray(pickMeta('playerIds', 'PlayerIds'))
+					? (pickMeta('playerIds', 'PlayerIds') as unknown[])
+						.map(num).filter((v): v is number => v !== undefined)
 					: undefined,
 				playerEventId: playerEventId !== undefined && playerEventId > 0 ? playerEventId : null,
 			})

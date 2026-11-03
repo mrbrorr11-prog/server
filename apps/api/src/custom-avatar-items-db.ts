@@ -18,9 +18,9 @@
  * because the client points at one by bare id; that does not apply here.
  *
  * The two uploads that accompany a player's creation (the design blob and the thumbnail PNG)
- * live in the shared image bucket (`recflare-img`, the `IMAGES` binding) under
- * `avatar-item/<date>/<id>-thumb.png` and `<id>-design.png`; `ThumbnailImageFilename` and
- * `DesignFilename` hold those bucket keys, which the `img` worker serves back by key. A
+ * live in the shared image store: `recflare-img` when R2 is enabled, or the free
+ * `RECFLARE_ROOM_BLOBS` KV namespace on no-R2 deployments. `ThumbnailImageFilename` and
+ * `DesignFilename` hold the `avatar-item/<date>/…` keys, which the `img` worker serves back. A
  * first-party item has both null and is rendered from its saves' assetbundles instead.
  *
  * The `api` worker owns the schema/migration (migrations/0015_custom_avatar_item.sql, rebuilt

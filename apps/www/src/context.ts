@@ -17,6 +17,8 @@ export type Env = SharedHonoEnv & {
 	 * migrated) by another worker; www never migrates.
 	 */
 	DB: D1Database
+	/** Max rooms per account, matched to the rooms worker (0 disables the cap). */
+	MAX_ROOMS_PER_ACCOUNT?: string | number
 	/**
 	 * SignalR notifications hub (DO owned by the `notify` worker). Bound mainly for one thing: a
 	 * ban handed down from the staff panel ejects the player from the instance they are
